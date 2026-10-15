@@ -39,7 +39,14 @@ docker compose exec api python -m app.bootstrap
 
 工作空间管理员可调用 `POST /api/v1/auth/workspaces/{workspace_id}/members` 添加运营人员、主管或管理员，提交时需同时提供 Bearer 令牌和 `X-Workspace-ID`。添加成员和角色会写入 `audit_events`；后续配置接口应使用管理员权限依赖，高风险审批接口应使用主管/管理员权限依赖。
 
-`migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 同时验证数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。数据库和 Redis 仅向容器网络开放，Web/API 仅绑定本机回环地址。
+`migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 验证匿名访问保护、数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。若要同时验收登录、大盘与退出，在管理员初始化后执行以下命令，并在系统提示时输入账号密码；凭据不会写入仓库：
+
+```powershell
+$credential = Get-Credential -Message '输入管理员账号和密码'
+.\scripts\smoke.ps1 -Credential $credential
+```
+
+数据库和 Redis 仅向容器网络开放，Web/API 仅绑定本机回环地址。
 
 初次启动需要下载镜像和依赖；可在 `.env` 修改 `WEB_PORT` 或 `API_PORT` 避免端口占用，然后重新执行启动命令。若连接异常，使用下列命令定位：
 
