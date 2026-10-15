@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -7,6 +8,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -125,3 +128,98 @@ class AuditEvent(Base):
     resource_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Store(Base):
+    """店铺属于工作空间；平台授权在后续配置阶段接入。"""
+
+    __tablename__ = "stores"
+    __table_args__ = (Index("ix_stores_workspace_name", "workspace_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    platform: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Product(Base):
+    """商品档案始终经所属店铺确定工作空间。"""
+
+    __tablename__ = "products"
+    __table_args__ = (Index("ix_products_store_name", "store_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(120), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProductSku(Base):
+    """价格与当前库存按规格保存，库存变化另写不可覆盖的流水。"""
+
+    __tablename__ = "product_skus"
+    __table_args__ = (
+        UniqueConstraint("product_id", "sku_code", name="uq_product_sku_code"),
+        Index("ix_skus_product_stock", "product_id", "stock"),
+        CheckConstraint("stock >= 0", name="ck_skus_stock"),
+        CheckConstraint("warning_threshold >= 0", name="ck_skus_warning_threshold"),
+        CheckConstraint("price >= 0", name="ck_skus_price"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    sku_code: Mapped[str] = mapped_column(String(100))
+    specification: Mapped[str] = mapped_column(String(200))
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+    warning_threshold: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InventoryMovement(Base):
+    """每次库存调整记录变更量、调整后数量和操作者。"""
+
+    __tablename__ = "inventory_movements"
+    __table_args__ = (Index("ix_inventory_product_created", "product_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    sku_id: Mapped[int] = mapped_column(ForeignKey("product_skus.id"), index=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    delta: Mapped[int] = mapped_column(Integer)
+    quantity_after: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Competitor(Base):
+    """竞品参数绑定商品 ID，避免切换商品时混入其他单品。"""
+
+    __tablename__ = "competitors"
+    __table_args__ = (Index("ix_competitors_product_created", "product_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
