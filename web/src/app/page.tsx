@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 const navigation = ["商品工作台", "创意与素材", "生成任务", "投放与复盘", "导入中心", "Agent 任务", "系统配置"];
 
 export default async function Dashboard() {
+  // Render the initial service state on the server; the client panel can refresh it on demand.
   let report: HealthReport;
   try {
     report = await fetchApiHealth();

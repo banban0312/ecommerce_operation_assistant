@@ -7,6 +7,7 @@ from app.worker.tasks import ping
 
 
 def main() -> None:
+    # Verify both database migration state and the full broker/worker/result-backend round trip.
     expected = ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
     with get_engine().connect() as connection:
         current = MigrationContext.configure(connection).get_current_revision()

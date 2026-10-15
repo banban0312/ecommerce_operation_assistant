@@ -3,6 +3,7 @@ from celery import Celery
 from app.core.config import get_settings
 
 settings = get_settings()
+# JSON-only serialization keeps task messages interoperable and avoids unsafe pickle payloads.
 celery_app = Celery(
     "ecommerce_operation_assistant",
     broker=settings.redis_url,

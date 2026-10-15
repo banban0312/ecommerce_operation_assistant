@@ -7,6 +7,8 @@ from sqlalchemy import URL
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables or the local .env file."""
+
     model_config = SettingsConfigDict(extra="ignore")
 
     mysql_host: str = "mysql"
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> URL:
+        # Build the URL from separate fields so special characters in credentials are escaped safely.
         return URL.create(
             "mysql+pymysql",
             username=self.mysql_user,
@@ -34,4 +37,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # Reuse one settings object per process instead of reparsing environment values per request.
     return Settings()

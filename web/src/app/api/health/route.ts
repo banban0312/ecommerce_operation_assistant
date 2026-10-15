@@ -3,6 +3,7 @@ import { fetchApiHealth } from "@/lib/health";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // Browser requests use this same-origin endpoint; the server makes the internal API request.
   try {
     const report = await fetchApiHealth();
     return Response.json(report, {

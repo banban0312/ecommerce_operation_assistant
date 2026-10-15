@@ -19,6 +19,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str) -> None:
+    # Replace inherited handlers so each log event is emitted once in the agreed JSON format.
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()

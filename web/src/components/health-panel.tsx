@@ -11,11 +11,13 @@ const services = [
 ];
 
 export function HealthPanel({ initialReport }: { initialReport: HealthReport }) {
+  // Keep the server-rendered report as the initial UI state to avoid a loading flash on page load.
   const [report, setReport] = useState<HealthReport>(initialReport);
   const [checking, setChecking] = useState(false);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
+    // Refresh through the same-origin Next route, which safely proxies the internal API address.
     try {
       const response = await fetch("/api/health", { cache: "no-store", signal });
       const data = (await response.json()) as HealthReport;
