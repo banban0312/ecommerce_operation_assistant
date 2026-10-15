@@ -28,7 +28,7 @@ try {
         if ($login.StatusCode -ne 200) { throw 'Authenticated login failed.' }
         Write-Host 'PASS authenticated login'
         $dashboard = Invoke-WebRequest -Uri $webBase -WebSession $authSession -TimeoutSec 15 -UseBasicParsing
-        if (-not $dashboard.Content.Contains('你的运营工作台')) { throw 'Authenticated dashboard was not returned.' }
+        if (-not $dashboard.Content.Contains('WORKSPACE OVERVIEW') -or -not $dashboard.Content.Contains('商品列表')) { throw 'Authenticated dashboard was not returned.' }
         Write-Host 'PASS authenticated dashboard'
         $logout = Invoke-WebRequest -Uri "$webBase/api/auth/logout" -Method Post -WebSession $authSession -TimeoutSec 15 -UseBasicParsing
         $afterLogout = Invoke-WebRequest -Uri $webBase -WebSession $authSession -TimeoutSec 15 -UseBasicParsing

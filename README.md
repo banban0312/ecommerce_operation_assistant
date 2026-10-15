@@ -2,7 +2,7 @@
 
 面向电商运营团队的智能运营工作台，围绕单品经营全生命周期，连接商品建档、竞品分析、AI 诊断与创意、异步素材制作、人工投放决策、经营数据回填和复盘。
 
-> **当前开发：Issue #2 认证与工作空间权限。** 工程已包含 Web、API、MySQL、Redis、Celery Worker 和数据库迁移入口；本分支增加账号登录、工作空间角色和受保护的大盘。
+> **当前开发：M2 商品建档与运营大盘（Issue #3、#4）。** 已有账号登录、工作空间角色和受保护的大盘；本阶段增加店铺、商品、SKU、库存流水与预警、竞品资料及商品工作台。
 
 ## 本机启动
 
@@ -27,7 +27,7 @@ docker compose exec api python -m app.bootstrap
 
 | 入口 | 默认地址 | 作用 |
 | --- | --- | --- |
-| 运营大盘 | http://localhost:3000 | 登录后查看工作台和实际服务连接状态 |
+| 运营大盘 | http://localhost:3000 | 登录后创建店铺和商品、检索商品并查看库存预警 |
 | 登录页 | http://localhost:3000/login | 使用初始化的管理员账号登录 |
 | Web 存活检查 | http://localhost:3000/health | 检查 Next.js 服务是否存活 |
 | Web → API 检查 | http://localhost:3000/api/health | 经 Web 服务访问 API 就绪检查 |
@@ -38,6 +38,12 @@ docker compose exec api python -m app.bootstrap
 认证接口为 `POST /api/v1/auth/login`、`GET /api/v1/auth/me` 和 `GET /api/v1/auth/workspaces`。认证采用短期 Bearer 令牌；Web 将令牌保存在 HttpOnly Cookie 中，浏览器脚本不能读取令牌。跨工作空间访问由 API 根据用户成员关系和 `X-Workspace-ID` 校验。
 
 工作空间管理员可调用 `POST /api/v1/auth/workspaces/{workspace_id}/members` 添加运营人员、主管或管理员，提交时需同时提供 Bearer 令牌和 `X-Workspace-ID`。添加成员和角色会写入 `audit_events`；后续配置接口应使用管理员权限依赖，高风险审批接口应使用主管/管理员权限依赖。
+
+### M2 商品建档与库存
+
+登录后先在运营大盘新建店铺，再新建商品。点击商品列表中的“进入工作台”可录入不同规格的 SKU、价格和初始库存；每次库存调整都需要填写原因，并生成可查询的库存流水。SKU 库存低于预警阈值时，大盘会显示预警并提供商品入口。竞品资料按当前商品保存名称、价格和关键参数；切换商品后只显示该商品的数据。诊断、创意素材和投放复盘目前为后续阶段入口。
+
+商品 API 位于 `/api/v1/catalog`，包括 `stores`、`products`、`products/{id}/skus`、`products/{id}/inventory-movements`、`products/{id}/competitors` 和 `dashboard`。请求需带 Bearer 令牌及 `X-Workspace-ID`；商品列表支持 `q`、`store_id`、`page`、`page_size`。Web 页面经同源 `/api/catalog/` 代理调用。库存调整接口接收调整后的绝对数量 `quantity` 和原因 `reason`。店铺、商品和 SKU 的删除接口执行归档，保留历史记录。
 
 `migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 验证匿名访问保护、数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。若要同时验收登录、大盘与退出，在管理员初始化后执行以下命令，并在系统提示时输入账号密码；凭据不会写入仓库：
 
@@ -55,7 +61,7 @@ docker compose logs --tail 100 api worker migrate
 docker compose restart api worker
 ```
 
-停止服务使用 `docker compose down`，MySQL、Redis 和素材卷会保留。保留数据卷期间不要重新生成数据库密码；变更应用连接配置不会自动修改已有数据库账号密码。迁移会创建用户、工作空间、成员关系和审计表；首次创建管理员仅可在系统中尚无用户时执行。
+停止服务使用 `docker compose down`，MySQL、Redis 和素材卷会保留。保留数据卷期间不要重新生成数据库密码；变更应用连接配置不会自动修改已有数据库账号密码。迁移会创建用户、工作空间、成员关系、审计表和商品主数据表；首次创建管理员仅可在系统中尚无用户时执行。
 
 ## 工程目录
 
@@ -70,7 +76,7 @@ api/
     db/              # Base 导出、连接池、请求级会话
     services/        # 认证、密码校验、工作空间和审计逻辑
     worker/          # Celery 应用与任务
-    models.py        # 用户、工作空间、成员关系和审计 ORM 模型
+    models.py        # 用户、工作空间、审计及商品主数据 ORM 模型
     observability.py # 结构化日志
   alembic/           # 版本化迁移
   tests/             # 隔离的自动化检查
@@ -135,7 +141,7 @@ flowchart LR
 | 异步任务 | Redis、Celery | 图片/视频任务队列、重试和后台处理 |
 | 文件存储 | 开发阶段使用受控本地卷 | 导入文件和生成素材；部署方案确定后再评估共享存储 |
 
-当前已实现工程连接基线和基础认证；表中的商品、导入和 AI 业务能力属于后续规划。
+当前已实现工程连接基线、基础认证和 M2 商品主数据；导入和 AI 业务能力属于后续规划。
 
 ## 角色与权限
 
@@ -205,4 +211,4 @@ uv add --project api --dev <开发依赖包名>
 
 已有完整归档时，可以在导入并初始化本机 `.env` 后使用 `docker compose up -d --no-build --pull never --wait --wait-timeout 180` 启动。归档不包含数据库数据卷、素材内容或 `.env`，也不保证能在断网状态重新构建包依赖。镜像需要由 Docker 加载到引擎才能运行，文件夹用于归档和迁移。
 
-在功能分支上完成 Issue，通过检查后创建关联 PR；项目负责人评审并合并。Issue #1 完成不代表 M1 整体完成，登录和权限需由 Issue #2 继续交付。
+在功能分支上完成 Issue，通过检查后创建关联 PR；项目负责人评审并合并。M2 包含 Issue #3、#4，两项验收共同构成商品与运营大盘的阶段交付。
