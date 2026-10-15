@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Stop'
+param([pscredential]$Credential)
+$ErrorActionPreference = 'Stop'
 # 从 Compose 读取实际映射端口，支持用户自定义 WEB_PORT 和 API_PORT。
 Push-Location (Split-Path -Parent $PSScriptRoot)
 try {
@@ -15,8 +16,25 @@ try {
         Write-Host "PASS $endpoint"
     }
     $page = Invoke-WebRequest -Uri $webBase -TimeoutSec 15 -UseBasicParsing
-    if (-not $page.Content.Contains('运营大盘')) { throw 'Dashboard HTML was not returned.' }
-    Write-Host 'PASS dashboard HTML'
+    if (-not $page.Content.Contains('登录工作台')) { throw 'Anonymous access did not reach the login page.' }
+    Write-Host 'PASS anonymous dashboard protection'
+    if ($Credential) {
+        # 凭据只保留在调用进程内；不写入仓库、输出或日志。
+        $loginBody = @{
+            email = $Credential.UserName
+            password = $Credential.GetNetworkCredential().Password
+        } | ConvertTo-Json -Compress
+        $login = Invoke-WebRequest -Uri "$webBase/api/auth/login" -Method Post -ContentType 'application/json' -Body $loginBody -SessionVariable authSession -TimeoutSec 15 -UseBasicParsing
+        if ($login.StatusCode -ne 200) { throw 'Authenticated login failed.' }
+        Write-Host 'PASS authenticated login'
+        $dashboard = Invoke-WebRequest -Uri $webBase -WebSession $authSession -TimeoutSec 15 -UseBasicParsing
+        if (-not $dashboard.Content.Contains('你的运营工作台')) { throw 'Authenticated dashboard was not returned.' }
+        Write-Host 'PASS authenticated dashboard'
+        $logout = Invoke-WebRequest -Uri "$webBase/api/auth/logout" -Method Post -WebSession $authSession -TimeoutSec 15 -UseBasicParsing
+        $afterLogout = Invoke-WebRequest -Uri $webBase -WebSession $authSession -TimeoutSec 15 -UseBasicParsing
+        if (-not $afterLogout.Content.Contains('登录工作台')) { throw 'Logout did not protect the dashboard.' }
+        Write-Host 'PASS logout and dashboard protection'
+    }
     # 容器内验证数据库迁移版本和 Worker 往返执行任务。
     docker compose exec -T api python -m app.smoke
     if ($LASTEXITCODE -ne 0) { throw 'Migration or worker round-trip probe failed.' }

@@ -2,7 +2,7 @@
 
 面向电商运营团队的智能运营工作台，围绕单品经营全生命周期，连接商品建档、竞品分析、AI 诊断与创意、异步素材制作、人工投放决策、经营数据回填和复盘。
 
-> **当前交付：Issue #1 工程基线。** 已提供 Web、API、MySQL、Redis、Celery Worker 和数据库迁移入口。页面展示真实服务连接状态；登录、商品和 AI 业务功能将按后续 Issues 实现。
+> **当前开发：Issue #2 认证与工作空间权限。** 工程已包含 Web、API、MySQL、Redis、Celery Worker 和数据库迁移入口；本分支增加账号登录、工作空间角色和受保护的大盘。
 
 ## 本机启动
 
@@ -15,20 +15,38 @@ docker compose ps -a
 .\scripts\smoke.ps1
 ```
 
-初始化脚本从 `.env.example` 生成被 Git 忽略的 `.env`，随机创建本机数据库密码；已有 `.env` 不会被覆盖。工程基线不需要模型密钥。若 PowerShell 提示不允许运行本地脚本，可以在当前终端执行 `Set-ExecutionPolicy -Scope Process Bypass` 后重试。
+初始化脚本从 `.env.example` 生成被 Git 忽略的 `.env`，随机创建数据库密码和认证令牌签名密钥；已有 `.env` 不会被覆盖。首次启动后，在另一个 PowerShell 窗口初始化管理员：
+
+```powershell
+docker compose exec api python -m app.bootstrap
+```
+
+按提示输入管理员邮箱、名称和至少 12 位密码。密码不会回显或保存在仓库中。若 PowerShell 提示不允许运行本地脚本，可以在当前终端执行 `Set-ExecutionPolicy -Scope Process Bypass` 后重试。
 
 启动后访问：
 
 | 入口 | 默认地址 | 作用 |
 | --- | --- | --- |
-| 运营大盘 | http://localhost:3000 | 查看实际连接状态并点击“重新检查” |
+| 运营大盘 | http://localhost:3000 | 登录后查看工作台和实际服务连接状态 |
+| 登录页 | http://localhost:3000/login | 使用初始化的管理员账号登录 |
 | Web 存活检查 | http://localhost:3000/health | 检查 Next.js 服务是否存活 |
 | Web → API 检查 | http://localhost:3000/api/health | 经 Web 服务访问 API 就绪检查 |
 | API 存活检查 | http://localhost:8000/health/live | 独立于数据库的进程状态 |
 | API 就绪检查 | http://localhost:8000/health/ready | 检查 MySQL、Redis 和素材卷；异常返回 HTTP 503 |
 | API 文档 | http://localhost:8000/docs | 查看当前可用接口 |
 
-`migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 同时验证数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。数据库和 Redis 仅向容器网络开放，Web/API 仅绑定本机回环地址。
+认证接口为 `POST /api/v1/auth/login`、`GET /api/v1/auth/me` 和 `GET /api/v1/auth/workspaces`。认证采用短期 Bearer 令牌；Web 将令牌保存在 HttpOnly Cookie 中，浏览器脚本不能读取令牌。跨工作空间访问由 API 根据用户成员关系和 `X-Workspace-ID` 校验。
+
+工作空间管理员可调用 `POST /api/v1/auth/workspaces/{workspace_id}/members` 添加运营人员、主管或管理员，提交时需同时提供 Bearer 令牌和 `X-Workspace-ID`。添加成员和角色会写入 `audit_events`；后续配置接口应使用管理员权限依赖，高风险审批接口应使用主管/管理员权限依赖。
+
+`migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 验证匿名访问保护、数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。若要同时验收登录、大盘与退出，在管理员初始化后执行以下命令，并在系统提示时输入账号密码；凭据不会写入仓库：
+
+```powershell
+$credential = Get-Credential -Message '输入管理员账号和密码'
+.\scripts\smoke.ps1 -Credential $credential
+```
+
+数据库和 Redis 仅向容器网络开放，Web/API 仅绑定本机回环地址。
 
 初次启动需要下载镜像和依赖；可在 `.env` 修改 `WEB_PORT` 或 `API_PORT` 避免端口占用，然后重新执行启动命令。若连接异常，使用下列命令定位：
 
@@ -37,7 +55,7 @@ docker compose logs --tail 100 api worker migrate
 docker compose restart api worker
 ```
 
-停止服务使用 `docker compose down`，MySQL、Redis 和素材卷会保留。保留数据卷期间不要重新生成数据库密码；变更应用连接配置不会自动修改已有数据库账号密码。工程阶段的迁移只建立 Alembic 版本记录，业务表在后续任务中加入。
+停止服务使用 `docker compose down`，MySQL、Redis 和素材卷会保留。保留数据卷期间不要重新生成数据库密码；变更应用连接配置不会自动修改已有数据库账号密码。迁移会创建用户、工作空间、成员关系和审计表；首次创建管理员仅可在系统中尚无用户时执行。
 
 ## 工程目录
 
@@ -48,10 +66,11 @@ api/
   app/
     api/routes/      # HTTP 路由
     core/            # 环境配置
+    schemas/         # API 请求与响应模型
     db/              # Base 导出、连接池、请求级会话
-    services/        # 基础设施检查与后续业务服务
+    services/        # 认证、密码校验、工作空间和审计逻辑
     worker/          # Celery 应用与任务
-    models.py        # 统一 ORM 元数据，后续增加业务模型
+    models.py        # 用户、工作空间、成员关系和审计 ORM 模型
     observability.py # 结构化日志
   alembic/           # 版本化迁移
   tests/             # 隔离的自动化检查
@@ -116,7 +135,7 @@ flowchart LR
 | 异步任务 | Redis、Celery | 图片/视频任务队列、重试和后台处理 |
 | 文件存储 | 开发阶段使用受控本地卷 | 导入文件和生成素材；部署方案确定后再评估共享存储 |
 
-当前仅实现工程与连接基线；表中的商品、导入和 AI 业务能力属于后续规划。
+当前已实现工程连接基线和基础认证；表中的商品、导入和 AI 业务能力属于后续规划。
 
 ## 角色与权限
 

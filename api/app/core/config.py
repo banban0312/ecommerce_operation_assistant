@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     mysql_database: str = "ecommerce"
     mysql_user: str = "ecommerce"
     mysql_password: SecretStr = SecretStr("")
+    # 认证密钥必须通过本地环境配置；空值会阻止签发访问令牌。
+    auth_secret_key: SecretStr = SecretStr("")
+    auth_token_expire_minutes: int = Field(default=60, ge=1, le=10080)
     redis_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
     uploads_dir: Path = Path("uploads")
