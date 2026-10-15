@@ -3,7 +3,7 @@ import { fetchApiHealth } from "@/lib/health";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  // Browser requests use this same-origin endpoint; the server makes the internal API request.
+  // 浏览器只访问同源地址，由 Next.js 服务端转发到容器内部的 API。
   try {
     const report = await fetchApiHealth();
     return Response.json(report, {

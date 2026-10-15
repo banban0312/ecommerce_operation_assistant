@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    # Configure process-wide logging once and release the database pool during graceful shutdown.
+    # 应用启动时配置日志，正常关闭时释放数据库连接池。
     configure_logging(get_settings().log_level)
     logger.info("api_started")
     yield
@@ -31,7 +31,7 @@ app.include_router(health.router)
 
 
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
-    # Keep a stable client-facing error shape without exposing internal exception details.
+    # 统一错误响应结构，同时避免向客户端暴露内部异常信息。
     return JSONResponse(
         status_code=status,
         content={
@@ -45,7 +45,7 @@ def error_response(request: Request, status: int, code: str, message: str) -> JS
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
-    # Generate request IDs on the server so clients cannot choose or spoof log correlation IDs.
+    # 请求 ID 由服务端生成，避免客户端伪造日志关联标识。
     request.state.request_id = uuid4().hex
     started = time.monotonic()
     try:
@@ -72,7 +72,7 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
-    # Translate framework errors to the same public envelope used by other API failures.
+    # 将框架 HTTP 异常转换为统一的对外错误格式。
     codes = {401: "AUTH_401", 403: "AUTH_403", 404: "BIZ_404", 409: "BIZ_409"}
     messages = {401: "请先登录", 403: "无操作权限", 404: "资源不存在", 409: "状态冲突"}
     return error_response(
@@ -85,5 +85,5 @@ async def http_error(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    # Do not echo submitted values or validation internals, which may contain sensitive input.
+    # 不回显提交值或校验细节，避免响应包含用户输入的敏感内容。
     return error_response(request, 422, "VAL_422", "请求参数不合法")

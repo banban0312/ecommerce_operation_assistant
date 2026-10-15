@@ -4,10 +4,11 @@ import { fetchApiHealth, type HealthReport } from "@/lib/health";
 
 export const dynamic = "force-dynamic";
 
+// 菜单先展示规划中的模块；对应 Issue 完成前保持禁用，避免误导用户。
 const navigation = ["商品工作台", "创意与素材", "生成任务", "投放与复盘", "导入中心", "Agent 任务", "系统配置"];
 
 export default async function Dashboard() {
-  // Render the initial service state on the server; the client panel can refresh it on demand.
+  // 服务端先读取基础服务状态，客户端面板加载后仍可手动刷新。
   let report: HealthReport;
   try {
     report = await fetchApiHealth();

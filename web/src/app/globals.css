@@ -1,3 +1,4 @@
+/* 全局设计变量：集中管理主文字、强调色、边框和页面底色。 */
 :root { color-scheme: light; --ink:#172b3a; --muted:#75858f; --accent:#117c70; --border:#e5ecec; --surface:#f5f8f8; }
 * { box-sizing:border-box; }
 body { margin:0; color:var(--ink); background:var(--surface); font-family:Arial,"Microsoft YaHei","PingFang SC",sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
@@ -5,6 +6,7 @@ a { color:inherit; text-decoration:none; }
 button { font:inherit; cursor:pointer; }
 button:disabled { cursor:not-allowed; }
 a:focus-visible,button:focus-visible { outline:3px solid #2ab4a2; outline-offset:4px; }
+/* 页面采用固定侧栏和弹性内容区的工作台结构。 */
 .app-shell { display:flex; min-height:100vh; }
 .sidebar { width:240px; flex-shrink:0; background:#fff; border-right:1px solid var(--border); display:flex; flex-direction:column; padding:32px 18px 20px; }
 .brand { display:flex; gap:11px; align-items:center; font-size:17px; font-weight:700; padding:0 8px 38px; }
@@ -46,8 +48,10 @@ h1 { font-size:28px; margin:0 0 10px; font-weight:650; letter-spacing:-1px; }
 .section-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:24px; }
 h2 { font-size:16px; font-weight:600; margin:0; }
 .section-heading .eyebrow { letter-spacing:1px; font-size:10px; margin-bottom:7px; }
+/* 健康卡片在宽屏并排显示，窄屏布局在文件末尾调整为单列。 */
 .service-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:15px; }
 .service-card { padding:18px; border:1px solid var(--border); border-radius:7px; }
+/* 状态文字和颜色共同表达结果，避免仅靠颜色区分服务状态。 */
 .status-badge { display:inline-flex; align-items:center; gap:5px; border-radius:4px; background:#f3f5f5; color:#89969b; padding:4px 7px; font-size:10px; }
 .status-dot { display:inline-block; width:5px; height:5px; flex-shrink:0; border-radius:50%; background:currentColor; }
 .status-badge.ok { background:#edf7f1; color:#2d8b5c; }

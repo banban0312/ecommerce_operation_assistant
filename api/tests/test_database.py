@@ -5,6 +5,7 @@ from app.db import session as database
 
 
 def test_request_session_closes_and_rolls_back_uncommitted_work(monkeypatch):
+    # 模拟请求结束，确认未提交写入回滚，避免请求间共享未完成事务。
     engine = create_engine("sqlite+pysqlite:///:memory:")
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE probe (id INTEGER PRIMARY KEY)"))

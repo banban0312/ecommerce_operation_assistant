@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    // strict 开启严格类型检查；paths 配置 @/src 下的导入别名。
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
@@ -16,6 +17,7 @@
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./src/*"] }
   },
+  // 同时检查应用源码和 Next.js 生成的路由类型。
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
   "exclude": ["node_modules"]
 }

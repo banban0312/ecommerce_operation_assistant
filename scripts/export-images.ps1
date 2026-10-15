@@ -1,6 +1,7 @@
 ﻿param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+# 默认把归档放在代码仓库同级目录，避免大型镜像文件进入 Git。
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path (Split-Path -Parent $repositoryRoot) '镜像'
 }
@@ -9,6 +10,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
 Push-Location $repositoryRoot
 try {
+    # 从 Compose 和 Dockerfile 收集运行镜像及构建基础镜像。
     $runtimeImages = @(docker compose config --images | Sort-Object -Unique)
     if ($LASTEXITCODE -ne 0) { throw 'Could not read Compose image references.' }
     $buildImages = @(
@@ -19,6 +21,7 @@ try {
         }
     ) | Sort-Object -Unique
     $allImages = @(@($runtimeImages) + @($buildImages) | Sort-Object -Unique)
+    # 记录镜像用途和身份信息，导入后可逐个核验。
     $inventory = @(
         foreach ($image in $allImages) {
             $imageInfo = docker image inspect $image --format '{{json .}}' | ConvertFrom-Json
@@ -36,6 +39,7 @@ try {
     $archiveName = 'ecommerce-operation-assistant-images.tar'
     $archivePath = Join-Path $OutputDirectory $archiveName
     $partialPath = $archivePath + '.partial'
+    # 先写临时归档，成功后才替换正式文件，避免留下不完整文件。
     try {
         docker image save --output $partialPath @allImages
         if ($LASTEXITCODE -ne 0) { throw 'Image export failed.' }
@@ -44,6 +48,7 @@ try {
     finally {
         if (Test-Path -LiteralPath $partialPath) { Remove-Item -LiteralPath $partialPath }
     }
+    # 清单 SHA256 用于发现归档传输或存储损坏。
     $manifest = [ordered]@{
         schemaVersion = 1
         exportedAt = (Get-Date).ToUniversalTime().ToString('o')

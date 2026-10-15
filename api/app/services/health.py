@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 def check_database() -> None:
-    # A lightweight query verifies connectivity without reading or changing application data.
+    # 只执行轻量查询来验证连接，不读取或修改业务数据。
     with get_engine().connect() as connection:
         connection.execute(text("SELECT 1"))
 
 
 def check_redis() -> None:
-    # Short socket timeouts keep a failed dependency from holding readiness probes open.
+    # 设置较短的网络超时，避免 Redis 故障时健康检查长时间挂起。
     with Redis.from_url(
         get_settings().redis_url, socket_connect_timeout=1, socket_timeout=1
     ) as client:
@@ -33,7 +33,7 @@ def check_storage() -> None:
 
 
 def readiness() -> dict:
-    # Run checks independently so the response reports every unavailable dependency at once.
+    # 各依赖独立检查，一次响应中汇总所有不可用项。
     checks = {}
     for name, check in (
         ("database", check_database),

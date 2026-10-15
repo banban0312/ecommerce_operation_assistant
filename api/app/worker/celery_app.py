@@ -3,7 +3,7 @@ from celery import Celery
 from app.core.config import get_settings
 
 settings = get_settings()
-# JSON-only serialization keeps task messages interoperable and avoids unsafe pickle payloads.
+# 任务消息和结果仅使用 JSON 序列化，避免反序列化不可信 pickle 数据。
 celery_app = Celery(
     "ecommerce_operation_assistant",
     broker=settings.redis_url,

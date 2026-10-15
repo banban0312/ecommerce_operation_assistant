@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { HealthReport } from "@/lib/health";
 
+// 面板只呈现实际探测到的服务状态，不填充模拟运营数据。
 const services = [
   { key: "api", name: "API 服务", description: "工作台与数据服务的连接" },
   { key: "database", name: "业务数据库", description: "MySQL 持久化连接" },
@@ -11,13 +12,13 @@ const services = [
 ];
 
 export function HealthPanel({ initialReport }: { initialReport: HealthReport }) {
-  // Keep the server-rendered report as the initial UI state to avoid a loading flash on page load.
+  // 直接使用服务端传入的初始状态，避免页面打开时先闪过空白加载态。
   const [report, setReport] = useState<HealthReport>(initialReport);
   const [checking, setChecking] = useState(false);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
-    // Refresh through the same-origin Next route, which safely proxies the internal API address.
+    // 通过同源 Next.js 路由刷新，由服务端代理内部 API 地址。
     try {
       const response = await fetch("/api/health", { cache: "no-store", signal });
       const data = (await response.json()) as HealthReport;

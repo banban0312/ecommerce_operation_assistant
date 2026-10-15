@@ -1,3 +1,4 @@
+# 分离依赖、构建和运行阶段，最终镜像只保留 Next.js standalone 运行文件。
 FROM node:24-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        # An allowlist avoids serializing request payloads, credentials or exception strings.
+        # 仅输出允许的字段，避免日志序列化请求正文、凭据或异常原文。
         data = {
             "time": datetime.now(UTC).isoformat(),
             "level": record.levelname,
@@ -19,7 +19,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str) -> None:
-    # Replace inherited handlers so each log event is emitted once in the agreed JSON format.
+    # 替换已有处理器，让每条日志只输出一次，并统一采用 JSON 格式。
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()

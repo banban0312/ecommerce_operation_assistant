@@ -13,17 +13,20 @@ from app.services import health
 
 @pytest.fixture
 def client():
+    # 使用 FastAPI 测试客户端，并通过上下文管理器触发生命周期钩子。
     with TestClient(app) as test_client:
         yield test_client
 
 
 @pytest.fixture
 def healthy_dependencies(monkeypatch):
+    # 默认模拟依赖健康，让单个用例只需覆盖正在验证的故障项。
     for name in ("check_database", "check_redis", "check_storage"):
         monkeypatch.setattr(health, name, lambda: None)
 
 
 def test_liveness_does_not_require_dependencies(client, monkeypatch):
+    # 数据库故障不能让进程存活检查失败。
     def unavailable():
         raise ConnectionError("unavailable")
 
@@ -34,6 +37,7 @@ def test_liveness_does_not_require_dependencies(client, monkeypatch):
 
 
 def test_readiness_checks_all_dependencies(client, healthy_dependencies):
+    # 就绪响应应包含每项依赖，且不能被缓存。
     response = client.get("/health/ready")
     assert response.status_code == 200
     assert set(response.json()["checks"]) == {"database", "redis", "storage"}
@@ -44,6 +48,7 @@ def test_readiness_checks_all_dependencies(client, healthy_dependencies):
 def test_dependency_failure_is_503_without_secret_leak(
     client, monkeypatch, healthy_dependencies, dependency, capsys
 ):
+    # 故障细节可以写入安全日志类型，但密码和密钥不能出现在响应或日志中。
     def unavailable():
         raise ConnectionError("mysql://user:PRIVATE_PASSWORD@mysql; key=PRIVATE_KEY")
 
@@ -58,6 +63,7 @@ def test_dependency_failure_is_503_without_secret_leak(
 
 
 def test_missing_volume_is_not_silently_created(tmp_path, monkeypatch):
+    # 卷未挂载时应报告故障，不能自动创建目录掩盖部署问题。
     missing = tmp_path / "missing-volume"
     monkeypatch.setattr(health, "get_settings", lambda: Settings(uploads_dir=missing))
     with pytest.raises(FileNotFoundError):
@@ -66,12 +72,14 @@ def test_missing_volume_is_not_silently_created(tmp_path, monkeypatch):
 
 
 def test_storage_probe_cleans_up(tmp_path, monkeypatch):
+    # 存储探针验证可写性后应删除临时文件。
     monkeypatch.setattr(health, "get_settings", lambda: Settings(uploads_dir=tmp_path))
     health.check_storage()
     assert list(tmp_path.iterdir()) == []
 
 
 def test_error_envelope_uses_server_generated_request_id(client):
+    # 客户端传入的请求 ID 不可信，响应和日志关联 ID 必须由服务端生成。
     response = client.get("/not-found", headers={"X-Request-ID": "untrusted-client-value"})
     body = response.json()
     assert response.status_code == 404

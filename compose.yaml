@@ -1,5 +1,6 @@
 name: ecommerce-operation-assistant
 
+# API 与 Worker 共用同一组数据库、队列、存储和日志配置。
 x-api-environment: &api-environment
   MYSQL_HOST: mysql
   MYSQL_PORT: "3306"
@@ -11,12 +12,14 @@ x-api-environment: &api-environment
   UPLOADS_DIR: /app/uploads
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+# API 与 Worker 共用镜像，迁移容器也使用该镜像执行 Alembic。
 x-api-build: &api-build
   build: ./api
   image: ecommerce-operation-api:local
 
 services:
   mysql:
+    # 数据库只暴露给 Compose 内部网络，数据保存在命名卷中。
     image: mysql:8.4
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ecommerce}
@@ -34,6 +37,7 @@ services:
     restart: unless-stopped
 
   redis:
+    # Redis 同时承载 Celery 消息队列和结果存储，启用 AOF 持久化。
     image: redis:7.4-alpine
     command: [redis-server, --appendonly, "yes"]
     volumes:
@@ -46,6 +50,7 @@ services:
     restart: unless-stopped
 
   migrate:
+    # 应用启动前先执行迁移；失败时 API 和 Worker 不会启动。
     <<: *api-build
     environment: *api-environment
     command: [alembic, upgrade, head]
@@ -54,6 +59,7 @@ services:
         condition: service_healthy
 
   api:
+    # FastAPI 仅绑定本机回环地址，供本机开发访问。
     <<: *api-build
     environment: *api-environment
     ports:
@@ -74,6 +80,7 @@ services:
     restart: unless-stopped
 
   worker:
+    # 后台任务进程与 API 共用代码及素材卷，但独立消费队列。
     <<: *api-build
     environment: *api-environment
     command: [celery, -A, app.worker.celery_app:celery_app, worker, --loglevel=INFO, --concurrency=2, --hostname=worker@%h]
@@ -93,6 +100,7 @@ services:
     restart: unless-stopped
 
   web:
+    # Next.js 负责浏览器页面，并通过服务端访问内部 API。
     build: ./web
     image: ecommerce-operation-web:local
     environment:
@@ -112,6 +120,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  # 命名卷分别保存数据库、Redis 和上传素材，容器重建时仍可保留。
   mysql_data:
   redis_data:
   uploads_data:

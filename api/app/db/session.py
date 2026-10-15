@@ -9,7 +9,7 @@ from app.core.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
-    # Keep one bounded connection pool per process; pre-ping drops stale connections after idle periods.
+    # 每个进程只创建一个连接池；预检查可发现空闲期间已失效的数据库连接。
     return create_engine(
         get_settings().database_url,
         pool_pre_ping=True,
@@ -22,11 +22,11 @@ def get_engine() -> Engine:
 
 @lru_cache
 def get_session_factory() -> sessionmaker[Session]:
-    # Disable implicit commits and flushes so callers control transaction boundaries explicitly.
+    # 禁止隐式提交和刷新，由调用方明确控制事务何时写入和提交。
     return sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
 
 
 def get_db() -> Generator[Session, None, None]:
-    # The context manager closes the request session and rolls back any uncommitted transaction.
+    # 请求结束时关闭会话；未提交的事务会随会话关闭而回滚。
     with get_session_factory()() as session:
         yield session

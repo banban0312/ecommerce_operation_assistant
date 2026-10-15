@@ -5,7 +5,7 @@ export type HealthReport = {
 };
 
 export async function fetchApiHealth(): Promise<HealthReport> {
-  // This runs on the Next.js server, so API_INTERNAL_URL stays inside the container network.
+  // 此函数在 Next.js 服务端运行，API_INTERNAL_URL 只需在容器网络内可访问。
   const baseUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8000";
   const response = await fetch(new URL("/health/ready", baseUrl), {
     cache: "no-store",
@@ -15,7 +15,7 @@ export async function fetchApiHealth(): Promise<HealthReport> {
     throw new Error("Unexpected API health response");
   }
   const result = (await response.json()) as HealthReport;
-  // Validate the minimal response contract before rendering it or forwarding it to the browser.
+  // 展示或转发响应前先校验最小数据结构，避免错误格式进入页面。
   if ((result.status !== "ok" && result.status !== "degraded") || !result.checks) {
     throw new Error("Invalid API health response");
   }

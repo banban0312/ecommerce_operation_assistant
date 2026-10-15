@@ -1,12 +1,14 @@
 ﻿$ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repositoryRoot '.env'
+# 已存在配置可能包含个人密码，因此初始化脚本不会覆盖它。
 if (Test-Path -LiteralPath $envFile) {
     Write-Host '.env already exists; no values were changed.'
     exit 0
 }
 
 function New-LocalPassword {
+    # 使用系统密码学随机数生成器创建数据库密码。
     $bytes = New-Object byte[] 32
     $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try { $generator.GetBytes($bytes) }
@@ -15,6 +17,7 @@ function New-LocalPassword {
 }
 
 $template = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot '.env.example'))
+# 仅生成本地数据库凭据；模型服务密钥由相关功能上线时再配置。
 $template = $template -replace '(?m)^MYSQL_PASSWORD=.*$', ('MYSQL_PASSWORD=' + (New-LocalPassword))
 $template = $template -replace '(?m)^MYSQL_ROOT_PASSWORD=.*$', ('MYSQL_ROOT_PASSWORD=' + (New-LocalPassword))
 [System.IO.File]::WriteAllText($envFile, $template, [System.Text.UTF8Encoding]::new($false))

@@ -7,7 +7,7 @@ from sqlalchemy import URL
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables or the local .env file."""
+    """集中管理应用配置；环境变量会覆盖默认值和本地 .env 文件中的值。"""
 
     model_config = SettingsConfigDict(extra="ignore")
 
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> URL:
-        # Build the URL from separate fields so special characters in credentials are escaped safely.
+        # 分字段构造连接地址，SQLAlchemy 会正确处理密码中的特殊字符。
         return URL.create(
             "mysql+pymysql",
             username=self.mysql_user,
@@ -37,5 +37,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    # Reuse one settings object per process instead of reparsing environment values per request.
+    # 每个进程复用同一个配置对象，避免在每次请求时重新读取配置。
     return Settings()

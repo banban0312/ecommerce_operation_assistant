@@ -8,13 +8,13 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 @router.get("/live")
 def liveness():
-    # Liveness only answers whether this API process can serve requests; it avoids dependency checks.
+    # 存活检查只确认 API 进程能响应，不检查数据库等外部依赖。
     return {"service": "api", "status": "ok"}
 
 
 @router.get("/ready")
 def ready():
-    # Readiness includes external dependencies and returns 503 while any required service is unavailable.
+    # 就绪检查包含外部依赖；任一必需服务不可用时返回 503。
     result = readiness()
     return JSONResponse(
         result,
