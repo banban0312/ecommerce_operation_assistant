@@ -1,0 +1,32 @@
+[project]
+name = "ecommerce-operation-api"
+version = "0.1.0"
+description = "API and worker for the ecommerce operation assistant"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "pydantic-settings>=2,<3",
+    "SQLAlchemy>=2,<3",
+    "alembic>=1.13,<2",
+    "PyMySQL[rsa]>=1.1,<2",
+    "redis>=5,<8",
+    "celery[redis]>=5.4,<6",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
