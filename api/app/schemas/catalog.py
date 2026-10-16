@@ -196,6 +196,7 @@ class DemoSeedRead(BaseModel):
     store_id: int
     created: bool
     label: str
+    included: list[str] = Field(default_factory=list)
 
 
 class StockWarning(BaseModel):

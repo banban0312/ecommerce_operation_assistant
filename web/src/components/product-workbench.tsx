@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { catalogRequest, type Competitor, type Movement, type Product, type ProductList, type Sku, type Store } from "@/lib/catalog";
 import { ContentWorkbench } from "@/components/content-workbench";
 import { MediaWorkbench } from "@/components/media-workbench";
 import { CampaignWorkbench } from "@/components/campaign-workbench";
 import { ReviewWorkbench } from "@/components/review-workbench";
+import { UiSelect } from "@/components/ui-select";
 
 export function ProductWorkbench({ productId, workspaceId }: { productId: number; workspaceId: number }) {
   const router = useRouter();
@@ -19,6 +20,8 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const competitorForm = useRef<HTMLFormElement>(null);
+  const [competitorParseMessage, setCompetitorParseMessage] = useState("");
   const [editProduct, setEditProduct] = useState(false);
   const [editSku, setEditSku] = useState<number | null>(null);
   const [adjustSku, setAdjustSku] = useState<number | null>(null);
@@ -79,14 +82,29 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
     finally { setBusy(false); }
   }
 
+  async function parseCompetitorLink() {
+    const form = competitorForm.current;
+    const sourceUrl = String(new FormData(form ?? undefined).get("source_url") ?? "").trim();
+    if (!sourceUrl) { setCompetitorParseMessage("请先填写公开商品链接。"); return; }
+    setBusy(true); setError(""); setCompetitorParseMessage("");
+    try {
+      const result = await catalogRequest<{ status: string; message: string; fields: { name?: string | null; price?: string | null; category?: string | null } }>(`products/${productId}/competitors/parse`, workspaceId, { method: "POST", body: JSON.stringify({ source_url: sourceUrl }) });
+      if (result.fields.name) { const field = form?.elements.namedItem("name") as HTMLInputElement | null; if (field) field.value = result.fields.name; }
+      if (result.fields.price) { const field = form?.elements.namedItem("price") as HTMLInputElement | null; if (field) field.value = result.fields.price; }
+      if (result.fields.category) { const field = form?.elements.namedItem("attributes") as HTMLTextAreaElement | null; if (field && !field.value.trim()) field.value = `品类: ${result.fields.category}`; }
+      setCompetitorParseMessage(result.message);
+    } catch (cause) { setCompetitorParseMessage(cause instanceof Error ? cause.message : "链接识别失败，请手动补录。"); }
+    finally { setBusy(false); }
+  }
+
   if (!product) return <div className="panel">{error ? <p className="notice error">{error}</p> : "正在加载商品…"}</div>;
   const store = stores.find((item) => item.id === product.store_id);
   return (
     <>
       <div className="page-heading"><div><p className="eyebrow">PRODUCT WORKSPACE</p><h1>{product.name}</h1><p>{store?.name ?? "店铺"} · {store?.platform ?? "平台"} · {product.category || "未分类"}</p></div><Link className="button secondary" href="/products">返回商品工作台</Link></div>
       {error && <p className="notice error" role="alert">{error}</p>}
-      <div className="context-bar"><label>当前商品 <select value={productId} onChange={(event) => router.push(`/products/${event.target.value}`)}>{allProducts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>商品 ID：{product.id}</span><span>SKU：{skus.length}</span><span>竞品：{competitors.length}</span></div>
-      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><a href="#ai-content">智能诊断与创意</a><Link href={`/agent?product_id=${productId}`}>Agent 任务</Link><span>投放复盘 · 待开放</span></nav>
+      <div className="context-bar"><label>当前商品 <UiSelect className="context-select" value={String(productId)} onChange={(value) => router.push(`/products/${value}`)} ariaLabel="切换当前商品" options={allProducts.map((item) => ({ value: String(item.id), label: item.name }))} /></label><span>商品 ID：{product.id}</span><span>SKU：{skus.length}</span><span>竞品：{competitors.length}</span></div>
+      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><a href="#ai-content">智能诊断与创意</a><Link href={`/agent?product_id=${productId}`}>Agent 任务</Link><a href="#campaign-review">投放实验</a><a href="#review-report">经营复盘</a></nav>
 
       <section className="panel" id="profile">
         <div className="section-heading"><div><p className="eyebrow">PRODUCT PROFILE</p><h2>商品档案</h2></div><button className="button secondary" onClick={() => setEditProduct(!editProduct)}>编辑档案</button></div>
@@ -101,15 +119,14 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
       </section>
 
       <section className="panel" id="competitors">
-        <div className="section-heading"><div><p className="eyebrow">COMPETITOR BENCHMARK</p><h2>竞品对标</h2></div><span className="muted-tag">人工录入 · 链接解析后续开放</span></div>
-        <form className="inline-form" onSubmit={(event) => submit(event, `products/${productId}/competitors`, "POST")}><label>竞品名称<input name="name" required maxLength={200} /></label><label>价格（元）<input name="price" type="number" min="0" step="0.01" required /></label><label>关键参数（每行 参数: 值）<textarea name="attributes" placeholder={"面料: 锦纶\n防晒指数: UPF50+"} /></label><label>公开链接（可选）<input name="source_url" type="url" maxLength={1000} /></label><button className="button primary" disabled={busy}>保存竞品</button></form>
+        <div className="section-heading"><div><p className="eyebrow">COMPETITOR BENCHMARK</p><h2>竞品对标</h2></div><span className="muted-tag">公开参数识别 · 无法识别时人工补录</span></div>
+        <form ref={competitorForm} className="inline-form" onSubmit={(event) => submit(event, `products/${productId}/competitors`, "POST")}><label>竞品名称<input name="name" required maxLength={200} /></label><label>价格（元）<input name="price" type="number" min="0" step="0.01" required /></label><label>关键参数（每行 参数: 值）<textarea name="attributes" placeholder={"面料: 锦纶\n防晒指数: UPF50+"} /></label><label>公开链接（可选）<input name="source_url" type="url" maxLength={1000} /></label><div className="section-actions"><button type="button" className="button secondary" disabled={busy} onClick={() => void parseCompetitorLink()}>识别链接参数</button><button className="button primary" disabled={busy}>保存竞品</button></div></form>{competitorParseMessage && <p className="notice success" role="status">{competitorParseMessage}</p>}
         {competitors.length ? <div className="competitor-grid">{competitors.map((item) => <article className="competitor-card" key={item.id}><div className="sku-head"><h3>{item.name}</h3><strong>¥{item.price}</strong></div><dl>{Object.entries(item.attributes).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>{item.source_url && <><span className="muted-tag">{item.source_status === "parsed" ? "来源已解析" : "待人工补录"}{item.source_fetched_at ? ` · ${new Date(item.source_fetched_at).toLocaleString("zh-CN")}` : ""}</span><a href={item.source_url} target="_blank" rel="noreferrer">查看来源 ↗</a></>}<button className="button secondary" disabled={busy} onClick={() => removeCompetitor(item.id)}>删除</button></article>)}</div> : <p className="subtle">暂无竞品资料。</p>}
       </section>
       <ContentWorkbench productId={productId} workspaceId={workspaceId} />
       <MediaWorkbench productId={productId} workspaceId={workspaceId} />
       <CampaignWorkbench productId={productId} workspaceId={workspaceId} />
       <ReviewWorkbench productId={productId} workspaceId={workspaceId} />
-      <section className="panel"><div className="section-heading"><div><p className="eyebrow">NEXT STEPS</p><h2>后续环节</h2></div></div><div className="future-grid"><span>投放建议与经营复盘 · 后续阶段</span></div></section>
     </>
   );
 }

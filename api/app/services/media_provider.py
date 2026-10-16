@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.services.service_settings import runtime_service
 
 
 @dataclass(frozen=True)
@@ -17,19 +19,22 @@ class ProviderResult:
     error_message: str | None = None
 
 
-def generate_media(media_type: str, job_id: int, prompt: dict) -> ProviderResult:
+def generate_media(
+    media_type: str, job_id: int, prompt: dict, db: Session, workspace_id: int
+) -> ProviderResult:
     settings = get_settings()
     if media_type == "image":
-        if not settings.openai_api_key.get_secret_value():
+        _, model, endpoint, key = runtime_service(db, workspace_id, "image")
+        if not key:
             return ProviderResult(
                 False, error_code="provider_not_configured", error_message="图片服务未配置"
             )
         try:
             response = httpx.post(
-                "https://api.openai.com/v1/images/generations",
-                headers={"Authorization": f"Bearer {settings.openai_api_key.get_secret_value()}"},
+                f"{endpoint}/images/generations",
+                headers={"Authorization": f"Bearer {key}"},
                 json={
-                    "model": settings.openai_image_model or "gpt-image-1",
+                    "model": model or "gpt-image-1",
                     "prompt": str(prompt),
                     "size": "1024x1024",
                 },
@@ -52,19 +57,20 @@ def generate_media(media_type: str, job_id: int, prompt: dict) -> ProviderResult
             return ProviderResult(
                 False, error_code="provider_unavailable", error_message="图片服务暂不可用"
             )
-    if not settings.video_api_key.get_secret_value() or not settings.video_provider:
+    provider, model, endpoint, key = runtime_service(db, workspace_id, "video")
+    if not key or provider == "none":
         return ProviderResult(
             False, error_code="provider_not_configured", error_message="视频服务未配置"
         )
-    if not settings.video_api_url:
+    if not endpoint:
         return ProviderResult(
             False, error_code="provider_not_configured", error_message="视频服务接口地址未配置"
         )
     try:
         response = httpx.post(
-            settings.video_api_url,
-            headers={"Authorization": f"Bearer {settings.video_api_key.get_secret_value()}"},
-            json={"model": settings.video_model, "prompt": prompt},
+            endpoint,
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": model, "prompt": prompt},
             timeout=settings.media_request_timeout_seconds,
         )
         response.raise_for_status()

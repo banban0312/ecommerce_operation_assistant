@@ -8,7 +8,7 @@ export default async function SettingsPage() {
   const identity = await requireIdentity();
   const membership = identity.memberships[0];
   return (
-    <WorkspaceShell identity={identity} title="模型配置">
+    <WorkspaceShell identity={identity} title="系统设置">
       {membership?.role === "admin" ? <SettingsWorkbench workspaceId={membership.workspace_id} /> : <p className="notice error">仅工作空间管理员可以访问系统配置。</p>}
     </WorkspaceShell>
   );

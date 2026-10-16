@@ -2,9 +2,11 @@
 
 from collections.abc import Generator
 from datetime import date
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -40,7 +42,7 @@ def m11_client(monkeypatch: pytest.MonkeyPatch):
         )
         db.add_all([workspace, user])
         db.flush()
-        db.add(WorkspaceMembership(workspace_id=workspace.id, user_id=user.id, role="operator"))
+        db.add(WorkspaceMembership(workspace_id=workspace.id, user_id=user.id, role="supervisor"))
         store = Store(workspace_id=workspace.id, name="旗舰店", platform="淘宝")
         db.add(store)
         db.flush()
@@ -115,3 +117,111 @@ def test_trends_returns_real_periods_without_zero_filling(m11_client) -> None:
     assert response.status_code == 200
     assert len(response.json()["series"][0]["points"]) == 1
     assert response.json()["series"][0]["points"][0]["actual_gmv"] == "1200.00"
+
+
+def test_demo_seed_populates_overview_and_is_idempotent(m11_client) -> None:
+    client, headers, _ = m11_client
+
+    first = client.post("/api/v1/catalog/demo/wireless-charger", headers=headers)
+    assert first.status_code == 201
+    body = first.json()
+    assert body["label"] == "模拟/演示数据"
+    assert len(body["included"]) >= 5
+
+    dashboard = client.get("/api/v1/catalog/dashboard", headers=headers)
+    assert dashboard.status_code == 200
+    assert dashboard.json()["store_count"] == 3
+    assert dashboard.json()["product_count"] == 3
+    assert dashboard.json()["warning_count"] == 1
+
+    trends = client.get("/api/v1/catalog/trends", headers=headers)
+    assert trends.status_code == 200
+    assert sum(len(series["points"]) for series in trends.json()["series"]) == 7
+    batches = client.get("/api/v1/imports/batches", headers=headers)
+    assert batches.status_code == 200
+    demo_batch = next(
+        item for item in batches.json() if item["filename"] == "wireless-charger-demo.csv"
+    )
+    assert demo_batch["status"] == "preview"
+    assert (demo_batch["valid_count"], demo_batch["error_count"]) == (1, 1)
+
+    second = client.post("/api/v1/catalog/demo/wireless-charger", headers=headers)
+    assert second.status_code == 201
+    assert second.json()["product_id"] == body["product_id"]
+    assert second.json()["included"] == body["included"]
+    assert client.get("/api/v1/catalog/dashboard", headers=headers).json() == dashboard.json()
+    assert client.get("/api/v1/catalog/trends", headers=headers).json() == trends.json()
+    repeated_batches = client.get("/api/v1/imports/batches", headers=headers).json()
+    assert sum(item["filename"] == "wireless-charger-demo.csv" for item in repeated_batches) == 1
+
+
+def test_import_templates_support_csv_and_xlsx(m11_client) -> None:
+    client, headers, _ = m11_client
+    expected = [
+        "store_id", "name", "category", "description", "platform_item_code",
+        "cost", "target_audience", "selling_points",
+    ]
+
+    csv_template = client.get(
+        "/api/v1/imports/templates/products?file_format=csv", headers=headers
+    )
+    assert csv_template.status_code == 200
+    assert csv_template.headers["content-disposition"].endswith('products-template.csv"')
+    assert csv_template.content.decode("utf-8-sig").strip().split(",") == expected
+
+    xlsx_template = client.get(
+        "/api/v1/imports/templates/products?file_format=xlsx", headers=headers
+    )
+    assert xlsx_template.status_code == 200
+    assert xlsx_template.headers["content-disposition"].endswith('products-template.xlsx"')
+    sheet = load_workbook(BytesIO(xlsx_template.content), read_only=True).active
+    assert list(next(sheet.values)) == expected
+    assert client.get(
+        "/api/v1/imports/templates/products?file_format=doc", headers=headers
+    ).status_code == 422
+
+
+def test_import_preview_rejects_empty_or_mismatched_template(m11_client) -> None:
+    client, headers, _ = m11_client
+    empty = client.post(
+        "/api/v1/imports/preview?data_type=products",
+        files={"file": ("products.csv", b"store_id,name\n")},
+        headers=headers,
+    )
+    assert empty.status_code == 422
+    assert "表头与products模板不匹配" in empty.json()["message"]
+
+    no_rows = client.post(
+        "/api/v1/imports/preview?data_type=products",
+        files={
+            "file": (
+                "products.csv",
+                b"store_id,name,category,description,platform_item_code,cost,target_audience,selling_points\n",
+            )
+        },
+        headers=headers,
+    )
+    assert no_rows.status_code == 422
+    assert "没有可导入的数据行" in no_rows.json()["message"]
+
+
+def test_import_preview_keeps_source_line_numbers_and_flags_extra_columns(m11_client) -> None:
+    client, headers, _ = m11_client
+    csv_content = (
+        "store_id,name,category,description,platform_item_code,cost,target_audience,selling_points\n"
+        "1,防晒衣,服装,春夏款,,100,通勤,轻薄\n"
+        "\n"
+        "1,帽子,服装,遮阳帽,,20,户外,透气,unexpected\n"
+    ).encode()
+    response = client.post(
+        "/api/v1/imports/preview?data_type=products",
+        files={"file": ("products.csv", csv_content)},
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    rows = response.json()["rows"]
+    assert [row["line"] for row in rows] == [2, 4]
+    assert rows[0]["valid"] is True
+    assert rows[1]["valid"] is False
+    assert "额外列数据" in rows[1]["errors"][0]

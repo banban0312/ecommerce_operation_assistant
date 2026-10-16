@@ -167,6 +167,13 @@ def test_operator_cannot_admin_or_approve_high_risk(auth_app) -> None:
     }
     assert client.get("/_test/admin", headers=headers).status_code == 403
     assert client.get("/_test/high-risk", headers=headers).status_code == 403
+    assert (
+        client.get(
+            f"/api/v1/auth/workspaces/{app.state.test_workspace_id}/members",
+            headers=headers,
+        ).status_code
+        == 403
+    )
 
 
 def test_supervisor_can_approve_high_risk_but_cannot_manage_settings(auth_app) -> None:
@@ -199,6 +206,10 @@ def test_admin_can_add_member_and_audit_it(auth_app) -> None:
         "Authorization": f"Bearer {token}",
         "X-Workspace-ID": str(app.state.test_workspace_id),
     }
+    members_url = f"/api/v1/auth/workspaces/{app.state.test_workspace_id}/members"
+    before = client.get(members_url, headers=headers)
+    assert before.status_code == 200
+    assert len(before.json()) == 1
     created = client.post(
         f"/api/v1/auth/workspaces/{app.state.test_workspace_id}/members",
         headers=headers,
@@ -211,6 +222,11 @@ def test_admin_can_add_member_and_audit_it(auth_app) -> None:
     )
     assert created.status_code == 201
     assert created.json()["role"] == "supervisor"
+    members = client.get(members_url, headers=headers)
+    assert members.status_code == 200
+    assert len(members.json()) == 2
+    assert {member["role"] for member in members.json()} == {"admin", "supervisor"}
+    assert all("password_hash" not in member for member in members.json())
     with Session(engine) as db:
         event = db.scalar(select(AuditEvent).where(AuditEvent.action == "workspace.member_created"))
         assert event is not None

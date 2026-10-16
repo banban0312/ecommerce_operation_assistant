@@ -1,6 +1,7 @@
 """补充原型中的平台商品编号、成本和商品定位字段。"""
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0004_product_profile"
@@ -21,7 +22,8 @@ def upgrade() -> None:
         op.add_column("products", sa.Column("cost", sa.Numeric(12, 2), nullable=True))
     if "target_audience" not in existing:
         op.add_column(
-            "products", sa.Column("target_audience", sa.String(500), nullable=False, server_default="")
+            "products",
+            sa.Column("target_audience", sa.String(500), nullable=False, server_default=""),
         )
     if "selling_points" not in existing:
         # MySQL 不允许 TEXT 默认值；先回填旧行，再收紧为非空。

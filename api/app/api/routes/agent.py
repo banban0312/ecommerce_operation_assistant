@@ -1,5 +1,6 @@
 """M10 单品 Agent：限定工具、商品边界和可审计人工审批。"""
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -21,6 +22,7 @@ from app.services.workspaces import WorkspaceAccess
 from app.worker.tasks import run_agent_task
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+logger = logging.getLogger(__name__)
 Access = Annotated[WorkspaceAccess, Depends(get_workspace_access)]
 AGENT_TOOLS = {
     "catalog_snapshot": ("商品档案快照", "读取商品基础信息和库存概况", False),
@@ -156,7 +158,21 @@ def create_task(product_id: int, payload: TaskCreate, db: SessionDep, access: Ac
     try:
         run_agent_task.delay(task.id)
     except Exception:
-        pass
+        logger.exception("Agent task dispatch failed", extra={"agent_task_id": task.id})
+        task.status = "failed"
+        task.error_message = "任务队列不可用，请检查 Redis 和 Worker 后重新创建任务。"
+        task.finished_at = datetime.now(UTC)
+        first_step = db.scalar(
+            select(AgentStep)
+            .where(AgentStep.task_id == task.id, AgentStep.status == "pending")
+            .order_by(AgentStep.step_no)
+        )
+        if first_step:
+            first_step.status = "failed"
+            first_step.error_message = task.error_message
+            first_step.finished_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(task)
     return _read(db, task)
 
 
@@ -220,7 +236,14 @@ def decide(
         try:
             run_agent_task.delay(task.id)
         except Exception:
-            pass
+            logger.exception(
+                "Approved Agent task dispatch failed", extra={"agent_task_id": task.id}
+            )
+            task.status = "failed"
+            task.error_message = "任务队列不可用，请检查 Redis 和 Worker 后从有效 checkpoint 恢复。"
+            task.finished_at = datetime.now(UTC)
+            db.commit()
+            db.refresh(task)
     return _read(db, task)
 
 

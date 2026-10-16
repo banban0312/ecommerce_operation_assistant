@@ -23,12 +23,14 @@ def _safe_json(raw: str) -> dict:
 
 
 def request_structured(
-    prompt: str, *, model: str | None = None, settings: Settings | None = None
+    prompt: str, *, model: str | None = None, api_key: str | None = None,
+    endpoint_url: str | None = None, settings: Settings | None = None
 ) -> dict:
     """调用文本模型 JSON 输出；任何供应商原文都不会返回给浏览器或写入日志。"""
     settings = settings or get_settings()
-    key = settings.openai_api_key.get_secret_value().strip()
+    key = (api_key if api_key is not None else settings.openai_api_key.get_secret_value()).strip()
     model = (model or settings.openai_text_model).strip()
+    endpoint = (endpoint_url or "https://api.openai.com/v1").rstrip("/")
     if not key or not model:
         raise HTTPException(
             status_code=503, detail="文本服务尚未配置，请在本机环境配置密钥和模型后重建服务"
@@ -48,7 +50,7 @@ def request_structured(
         }
     ).encode()
     request = Request(
-        "https://api.openai.com/v1/chat/completions",
+            f"{endpoint}/chat/completions",
         data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST",

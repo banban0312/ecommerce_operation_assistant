@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { settingsRequest, type ConfigAudit, type ConnectionResult, type PlatformAccount, type ServiceConfig, type SettingsData, type Target, type TaskRules } from "@/lib/settings";
+import { UiSelect } from "@/components/ui-select";
 
 const labels: Record<Target, string> = { text: "文本模型", image: "图片生成", video: "视频生成" };
 const auditLabels: Record<string, string> = {
@@ -14,6 +15,9 @@ const auditLabels: Record<string, string> = {
 function ServiceCard({ service, workspaceId, refresh }: { service: ServiceConfig; workspaceId: number; refresh: () => Promise<void> }) {
   const [provider, setProvider] = useState(service.provider);
   const [model, setModel] = useState(service.model);
+  const [endpoint, setEndpoint] = useState(service.endpoint_url);
+  const [apiKey, setApiKey] = useState("");
+  const [clearKey, setClearKey] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +26,8 @@ function ServiceCard({ service, workspaceId, refresh }: { service: ServiceConfig
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setResult(null);
     try {
-      await settingsRequest(`services/${service.target}`, workspaceId, { method: "PATCH", body: JSON.stringify({ provider, model }) });
+      await settingsRequest(`services/${service.target}`, workspaceId, { method: "PATCH", body: JSON.stringify({ provider, model, endpoint_url: endpoint, api_key: apiKey || null, clear_api_key: clearKey }) });
+      setApiKey(""); setClearKey(false);
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "保存失败"); }
     finally { setBusy(false); }
@@ -39,11 +44,11 @@ function ServiceCard({ service, workspaceId, refresh }: { service: ServiceConfig
 
   return <form className="service-card-settings" onSubmit={save}>
     <div className="service-card-heading"><h2>{labels[service.target]}</h2><span className={`config-status ${service.configured ? "ready" : ""}`}>{service.configured ? "已配置" : "待配置"}</span></div>
-    <label>服务供应商{service.target === "video" ? <select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="none">待选择</option><option value="jimeng">即梦</option><option value="dashscope">DashScope</option></select> : <input value="OpenAI 官方 API" readOnly />}</label>
-    <label>服务地址<input value={service.target === "video" ? "后续按供应商适配" : "https://api.openai.com/v1"} readOnly /></label>
+    <label>服务供应商{service.target === "video" ? <UiSelect value={provider} onChange={setProvider} ariaLabel="服务供应商" options={[{ value: "none", label: "待选择" }, { value: "jimeng", label: "即梦" }, { value: "dashscope", label: "DashScope" }]} /> : <input value="OpenAI 兼容接口" readOnly />}</label>
+    <label>服务地址<input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} maxLength={1000} placeholder={service.target === "video" ? "填写服务商 API 地址" : "https://api.openai.com/v1"} /></label>
     <label>模型名称<input value={model} onChange={(event) => setModel(event.target.value)} maxLength={120} placeholder={service.target === "video" ? "填写视频模型" : "填写模型标识"} /></label>
-    <label>API Key 状态<input value={service.has_api_key ? "已在本机环境配置" : "尚未配置"} readOnly /></label>
-    <p className="subtle">密钥仅从本机环境读取，不在页面填写或回显。</p>
+    <label>API Key{service.has_api_key && <span className="credential-state">已配置 · {service.key_source === "workspace" ? "工作区密钥" : "环境默认密钥"}</span>}<input type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} maxLength={4096} placeholder={service.has_api_key ? "留空则保留已保存密钥" : "输入服务商 API Key"} /></label>
+    {service.key_source === "workspace" && <label className="clear-key-option"><input type="checkbox" checked={clearKey} onChange={(event) => setClearKey(event.target.checked)} />清除工作区已保存的密钥</label>}
     <div className="section-actions"><button className="button primary" disabled={busy}>保存配置</button><button className="button secondary" type="button" disabled={busy} onClick={check}>检查连接</button></div>
     {result && <p className={`check-result ${result.ok ? "ok" : "error"}`} role="status">{result.message}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
@@ -67,7 +72,7 @@ function PlatformRow({ item, workspaceId, refresh }: { item: PlatformAccount; wo
   return <form className="platform-row" onSubmit={save}>
     <div><strong>{item.store_name}</strong><small>{item.platform} · 店铺 {item.store_id}</small></div>
     <label>平台账号标识<input value={identifier} onChange={(event) => setIdentifier(event.target.value)} maxLength={120} placeholder="仅填写账号标识" /></label>
-    <label>本地状态<select value={status} onChange={(event) => setStatus(event.target.value as PlatformAccount["authorization_status"])}><option value="not_connected">未授权</option><option value="placeholder">占位记录</option></select></label>
+    <label>本地状态<UiSelect value={status} onChange={(value) => setStatus(value as PlatformAccount["authorization_status"])} ariaLabel="平台授权状态" options={[{ value: "not_connected", label: "未授权" }, { value: "placeholder", label: "占位记录" }]} /></label>
     <button className="button secondary" disabled={busy}>保存</button>
     {error && <p className="notice error" role="alert">{error}</p>}
   </form>;
@@ -105,7 +110,7 @@ export function SettingsWorkbench({ workspaceId }: { workspaceId: number }) {
   }
 
   return <>
-    <div className="page-heading"><div><p className="eyebrow">SYSTEM SETTINGS</p><h1>模型与服务配置</h1><p>分别管理文本、图片、视频能力；页面仅显示环境密钥的配置状态。</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">SYSTEM SETTINGS</p><h1>系统设置</h1><p>管理模型服务、店铺授权信息、任务规则和配置记录。</p></div></div>
     {error && <p className="notice error" role="alert">{error}</p>}
     {!data ? <p className="panel">正在加载配置…</p> : <>
       <section className="settings-services" aria-label="模型服务配置">

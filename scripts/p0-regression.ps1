@@ -55,7 +55,7 @@ try {
         foreach ($page in @(
             @{ path = '/'; marker = 'WORKSPACE OVERVIEW'; name = '运营大盘' },
             @{ path = '/products'; marker = '商品工作台'; name = '商品工作台' },
-            @{ path = '/settings'; marker = '模型配置'; name = '模型与系统配置' },
+            @{ path = '/settings'; marker = '系统设置'; name = '模型与系统配置' },
             @{ path = '/imports'; marker = '批量导入中心'; name = '批量导入中心' }
         )) {
             $pageResponse = Invoke-WebRequest -Uri "$webBase$($page.path)" -WebSession $authSession -TimeoutSec 15 -UseBasicParsing

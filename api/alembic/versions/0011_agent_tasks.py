@@ -23,7 +23,8 @@ def upgrade() -> None:
         ),
         sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("name", sa.String(160), nullable=False),
-        sa.Column("goal", sa.Text(), nullable=False, server_default=""),
+        # MySQL does not allow a default value on TEXT; create_task always supplies the goal.
+        sa.Column("goal", sa.Text(), nullable=False),
         sa.Column("requested_tools", sa.JSON(), nullable=False),
         sa.Column("context", sa.JSON(), nullable=False),
         sa.Column("status", sa.String(24), nullable=False, server_default="queued"),

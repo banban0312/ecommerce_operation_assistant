@@ -1,5 +1,5 @@
 export type Target = "text" | "image" | "video";
-export type ServiceConfig = { target: Target; provider: string; model: string; has_api_key: boolean; configured: boolean; key_source: "environment" };
+export type ServiceConfig = { target: Target; provider: string; model: string; endpoint_url: string; has_api_key: boolean; configured: boolean; key_source: "environment" | "workspace" };
 export type TaskRules = { timeout_seconds: number; max_retries: number; max_concurrency: number; image_poll_interval_seconds: number; image_poll_max_attempts: number; video_poll_interval_seconds: number; video_poll_max_attempts: number };
 export type PlatformAccount = { store_id: number; store_name: string; platform: string; account_identifier: string; authorization_status: "not_connected" | "placeholder" };
 export type SettingsData = { services: ServiceConfig[]; rules: TaskRules; platforms: PlatformAccount[] };

@@ -22,7 +22,10 @@ export function WorkspaceShell({ identity, title, children }: { identity: Identi
             <Link className={`nav-item ${title === "商品工作台" ? "active" : ""}`} href="/products">商品工作台</Link>
             <Link className={`nav-item ${title === "Agent 中心" ? "active" : ""}`} href="/agent">Agent 中心</Link>
             <Link className={`nav-item ${title === "导入中心" ? "active" : ""}`} href="/imports">导入中心</Link>
-            {membership?.role === "admin" ? <Link className={`nav-item ${title === "模型配置" ? "active" : ""}`} href="/settings">模型配置</Link> : <button className="nav-item" disabled title="仅管理员可用">模型配置</button>}
+            {membership?.role === "admin" && <>
+              <Link className={`nav-item ${title === "成员管理" ? "active" : ""}`} href="/members">成员管理</Link>
+              <Link className={`nav-item ${title === "系统设置" ? "active" : ""}`} href="/settings">系统设置</Link>
+            </>}
           </nav>
           <div className="account-menu">
             <span className="environment-tag">{membership?.workspace_name ?? "工作区"} · {roleLabels[membership?.role ?? ""] ?? "成员"}</span>

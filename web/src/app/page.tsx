@@ -18,7 +18,7 @@ export default async function Dashboard() {
   return (
     <WorkspaceShell identity={identity} title="运营大盘">
       <div className="page-heading"><div><p className="eyebrow">WORKSPACE OVERVIEW</p><h1>运营大盘</h1><p>查看店铺、商品和库存状态，进入单品工作台。</p></div></div>
-      {workspaceId ? <CatalogDashboard workspaceId={workspaceId} /> : <p className="notice error">当前账号没有可用工作空间。</p>}
+      {workspaceId ? <CatalogDashboard workspaceId={workspaceId} canSeedDemo={["admin", "supervisor"].includes(identity.memberships[0]?.role ?? "")} /> : <p className="notice error">当前账号没有可用工作空间。</p>}
       <HealthPanel initialReport={report} />
     </WorkspaceShell>
   );

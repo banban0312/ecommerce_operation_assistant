@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.routes import (
-    auth,
     agent,
+    auth,
     campaign,
     catalog,
     content,

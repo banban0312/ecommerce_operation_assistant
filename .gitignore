@@ -15,6 +15,7 @@
 **/*.tsbuildinfo
 **/coverage/
 reports/
+backups/
 uploads/
 *.log
 *.tar

@@ -50,7 +50,9 @@ def run_generation_job(job_id: int) -> dict:
         db.commit()
         content = db.get(ContentVersion, job.content_version_id)
         started_monotonic = monotonic()
-        result = generate_media(job.media_type, job.id, content.content if content else {})
+        result = generate_media(
+            job.media_type, job.id, content.content if content else {}, db, job.workspace_id
+        )
         rule = db.scalar(select(TaskRule).where(TaskRule.workspace_id == job.workspace_id))
         if rule and monotonic() - started_monotonic > rule.timeout_seconds:
             result = result.__class__(

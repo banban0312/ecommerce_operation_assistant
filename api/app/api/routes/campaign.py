@@ -16,6 +16,7 @@ from app.schemas.campaign import (
     RiskUpdate,
 )
 from app.services.audit import record_audit_event
+from app.services.service_settings import runtime_service
 from app.services.text_provider import request_structured
 from app.services.workspaces import WorkspaceAccess
 
@@ -64,7 +65,8 @@ def generate_proposal(product_id: int, payload: ProposalCreate, db: SessionDep, 
         f"商品名称：{product.name}；品类：{product.category}；"
         f"目标人群：{product.target_audience}；卖点：{product.selling_points}。"
     )
-    content = request_structured(prompt)
+    _, model, endpoint, key = runtime_service(db, access.workspace.id, "text")
+    content = request_structured(prompt, model=model, endpoint_url=endpoint, api_key=key)
     required = {"audience", "bidding_strategy", "asset_mix", "ab_test"}
     if not required.issubset(content):
         raise HTTPException(502, "模型投放建议结构不完整，请稍后重试")

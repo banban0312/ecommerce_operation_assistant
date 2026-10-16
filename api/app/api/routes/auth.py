@@ -15,6 +15,7 @@ from app.schemas.auth import (
     LoginResponse,
     MembershipRead,
     UserRead,
+    WorkspaceMemberRead,
 )
 from app.services.audit import record_audit_event
 from app.services.auth import AuthTokenError, create_access_token
@@ -83,6 +84,41 @@ def me(db: SessionDep, user: CurrentUser) -> UserRead:
 def workspaces(db: SessionDep, user: CurrentUser) -> list[MembershipRead]:
     """列出当前用户可进入的工作空间和对应角色。"""
     return _user_read(db, user).memberships
+
+
+@router.get(
+    "/workspaces/{workspace_id}/members", response_model=list[WorkspaceMemberRead]
+)
+def list_members(
+    workspace_id: int,
+    db: SessionDep,
+    access: Annotated[WorkspaceAccess, Depends(get_workspace_access)],
+    _admin: Annotated[WorkspaceAccess, Depends(require_admin)],
+) -> list[WorkspaceMemberRead]:
+    """仅工作区管理员可以查看该工作区成员及其角色，不返回认证凭据。"""
+    if access.workspace.id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权管理此工作空间")
+    rows = db.execute(
+        select(WorkspaceMembership, User)
+        .join(User, User.id == WorkspaceMembership.user_id)
+        .where(WorkspaceMembership.workspace_id == workspace_id)
+        .order_by(User.display_name, User.email)
+    ).all()
+    return [
+        WorkspaceMemberRead(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            role=membership.role,
+            status=(
+                MembershipStatus.DISABLED.value
+                if membership.status != MembershipStatus.ACTIVE.value
+                else user.status
+            ),
+            last_login_at=user.last_login_at,
+        )
+        for membership, user in rows
+    ]
 
 
 @router.post("/workspaces/{workspace_id}/members", status_code=status.HTTP_201_CREATED)

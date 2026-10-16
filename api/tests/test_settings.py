@@ -16,12 +16,14 @@ from app.models import (
     AuditEvent,
     Base,
     PlatformAccountPlaceholder,
+    ServiceConfig,
     Store,
     User,
     Workspace,
     WorkspaceMembership,
 )
 from app.services.auth import create_access_token
+from app.services.secret_storage import decrypt_secret
 from app.services.users import hash_password
 
 
@@ -94,24 +96,36 @@ def test_admin_settings_persistence_audit_and_secret_boundary(settings_client) -
     assert client.get(url, headers={**admin, "X-Workspace-ID": str(other_id)}).status_code == 403
 
     changed = client.patch(
-        f"{url}/services/text", json={"provider": "openai", "model": "gpt-other"}, headers=admin
+        f"{url}/services/text",
+        json={
+            "provider": "openai",
+            "model": "gpt-other",
+            "endpoint_url": "https://llm.example.com/v1",
+            "api_key": "workspace-secret-value",
+        },
+        headers=admin,
     )
     assert changed.status_code == 200
     assert changed.json()["services"][0]["model"] == "gpt-other"
-    assert (
-        client.patch(
-            f"{url}/services/text",
-            json={"provider": "openai", "model": "x", "api_key": "leak"},
-            headers=admin,
-        ).status_code
-        == 422
-    )
+    assert changed.json()["services"][0]["endpoint_url"] == "https://llm.example.com/v1"
+    assert changed.json()["services"][0]["key_source"] == "workspace"
+    assert "workspace-secret-value" not in changed.text
+    with Session(engine) as db:
+        saved = db.scalar(select(ServiceConfig).where(ServiceConfig.target == "text"))
+        assert saved.api_key_encrypted != "workspace-secret-value"
+        assert saved.api_key_encrypted is not None
+        assert decrypt_secret(saved.api_key_encrypted) == "workspace-secret-value"
     assert (
         client.patch(
             f"{url}/services/text", json={"provider": "jimeng", "model": "x"}, headers=admin
         ).status_code
         == 422
     )
+    assert client.patch(
+        f"{url}/services/text",
+        json={"provider": "openai", "model": "x", "endpoint_url": "file:///etc/passwd"},
+        headers=admin,
+    ).status_code == 422
     assert (
         client.patch(
             f"{url}/services/text", json={"provider": "openai", "model": "x"}, headers=operator

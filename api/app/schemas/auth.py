@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +14,15 @@ class CreateMemberRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=12, max_length=256)
     role: str = Field(pattern=r"^(operator|supervisor|admin)$")
+
+
+class WorkspaceMemberRead(BaseModel):
+    id: int
+    email: str
+    display_name: str
+    role: Literal["operator", "supervisor", "admin"]
+    status: str
+    last_login_at: datetime | None
 
 
 class MembershipRead(BaseModel):

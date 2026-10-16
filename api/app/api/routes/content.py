@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, func, select
 
 from app.api.dependencies import SessionDep, get_workspace_access
-from app.models import Competitor, ContentVersion, Product, ProductSku, ServiceConfig, Store
+from app.models import Competitor, ContentVersion, Product, ProductSku, Store
 from app.schemas.content import ContentBundle, ContentRead, ContentUpdate, GenerationRead
 from app.services.audit import record_audit_event
+from app.services.service_settings import runtime_service
 from app.services.text_provider import build_prompt, request_structured
 from app.services.workspaces import WorkspaceAccess
 
@@ -95,15 +96,10 @@ def _ensure_ready(db: SessionDep, product: Product) -> None:
         raise HTTPException(status_code=422, detail="请先完善目标人群和核心卖点，再生成诊断或创意")
 
 
-def _text_model(db: SessionDep, access: WorkspaceAccess) -> str | None:
-    """M3 页面保存的非敏感模型名优先于环境默认值。"""
-    row = db.scalar(
-        select(ServiceConfig).where(
-            ServiceConfig.workspace_id == access.workspace.id,
-            ServiceConfig.target == "text",
-        )
-    )
-    return row.model if row and row.model else None
+def _text_config(db: SessionDep, access: WorkspaceAccess) -> tuple[str, str, str]:
+    """读取当前工作空间的模型名、地址和解密后的密钥。"""
+    _, model, endpoint, key = runtime_service(db, access.workspace.id, "text")
+    return model, endpoint, key
 
 
 def _next_version(db: SessionDep, product_id: int, content_type: str, slot: str) -> int:
@@ -156,8 +152,10 @@ def generate_diagnosis(product_id: int, db: SessionDep, access: Access) -> Gener
     product = _product(db, access, product_id)
     _ensure_ready(db, product)
     p, skus, competitors = _context(db, product)
+    model, endpoint, key = _text_config(db, access)
     data = request_structured(
-        build_prompt(p, skus, competitors, "diagnosis"), model=_text_model(db, access)
+        build_prompt(p, skus, competitors, "diagnosis"), model=model, endpoint_url=endpoint,
+        api_key=key,
     )
     required = {
         "target_audience",
@@ -185,8 +183,10 @@ def _generate_many(
     product = _product(db, access, product_id)
     _ensure_ready(db, product)
     p, skus, competitors = _context(db, product)
+    model, endpoint, key = _text_config(db, access)
     data = request_structured(
-        build_prompt(p, skus, competitors, output), model=_text_model(db, access)
+        build_prompt(p, skus, competitors, output), model=model, endpoint_url=endpoint,
+        api_key=key,
     )
     items = data.get("items")
     if (

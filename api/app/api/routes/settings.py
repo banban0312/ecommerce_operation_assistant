@@ -18,7 +18,8 @@ from app.schemas.settings import (
     TaskRulesUpdate,
 )
 from app.services.audit import record_audit_event
-from app.services.service_settings import check_connection, read_services
+from app.services.secret_storage import encrypt_secret
+from app.services.service_settings import check_connection, read_services, runtime_service
 from app.services.workspaces import WorkspaceAccess
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -80,7 +81,7 @@ def get_settings_page(db: SessionDep, admin: Admin) -> SettingsRead:
 def update_service(
     target: Target, payload: ServiceConfigUpdate, db: SessionDep, admin: Admin
 ) -> SettingsRead:
-    """只修改模型名称和供应商标识，拒绝 API Key 等额外字段。"""
+    """保存工作空间服务参数；密钥加密后写库，审计中不记录密钥。"""
     allowed = {"video": {"none", "jimeng", "dashscope"}, "text": {"openai"}, "image": {"openai"}}
     if payload.provider not in allowed[target]:
         raise HTTPException(status_code=422, detail="供应商与服务类型不匹配")
@@ -90,7 +91,11 @@ def update_service(
             ServiceConfig.target == target,
         )
     )
-    before = {"provider": row.provider, "model": row.model} if row else None
+    before = (
+        {"provider": row.provider, "model": row.model, "endpoint_url": row.endpoint_url}
+        if row
+        else None
+    )
     if row is None:
         row = ServiceConfig(
             workspace_id=admin.workspace.id, target=target, updated_by=admin.user.id
@@ -98,6 +103,11 @@ def update_service(
         db.add(row)
     row.provider = payload.provider
     row.model = payload.model.strip()
+    row.endpoint_url = payload.endpoint_url
+    if payload.api_key:
+        row.api_key_encrypted = encrypt_secret(payload.api_key)
+    elif payload.clear_api_key:
+        row.api_key_encrypted = None
     row.updated_by = admin.user.id
     record_audit_event(
         db,
@@ -105,7 +115,15 @@ def update_service(
         action="settings.service_updated",
         resource_type="service_config",
         resource_id=target,
-        details={"before": before, "after": {"provider": row.provider, "model": row.model}},
+        details={
+            "before": before,
+            "after": {
+                "provider": row.provider,
+                "model": row.model,
+                "endpoint_url": row.endpoint_url,
+            },
+            "api_key_changed": bool(payload.api_key or payload.clear_api_key),
+        },
     )
     db.commit()
     return get_settings_page(db, admin)
@@ -115,7 +133,8 @@ def update_service(
 def check_service(target: Target, db: SessionDep, admin: Admin) -> ConnectionCheckRead:
     """执行明确的外部元数据请求；结果只写状态码与安全描述。"""
     service = next(item for item in read_services(db, admin.workspace.id) if item.target == target)
-    result = check_connection(service)
+    _, _, _, api_key = runtime_service(db, admin.workspace.id, target)
+    result = check_connection(service, api_key=api_key)
     record_audit_event(
         db,
         access=admin,

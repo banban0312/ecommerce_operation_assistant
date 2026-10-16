@@ -1,5 +1,6 @@
 """M5 异步媒体任务、时间线和素材审核接口。"""
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -30,6 +31,7 @@ from app.services.workspaces import WorkspaceAccess
 from app.worker.tasks import run_generation_job
 
 router = APIRouter(prefix="/media", tags=["media"])
+logger = logging.getLogger(__name__)
 Access = Annotated[WorkspaceAccess, Depends(get_workspace_access)]
 
 
@@ -127,7 +129,14 @@ def create_job(product_id: int, payload: JobCreate, db: SessionDep, access: Acce
     try:
         run_generation_job.delay(job.id)
     except Exception:
-        pass
+        logger.exception("Media generation dispatch failed", extra={"generation_job_id": job.id})
+        job.status = "failed"
+        job.error_code = "queue_unavailable"
+        job.error_message = "任务队列不可用，请检查 Redis 和 Worker 后重试。"
+        job.finished_at = datetime.now(UTC)
+        db.add(GenerationEvent(job_id=job.id, status="failed", message=job.error_message))
+        db.commit()
+        db.refresh(job)
     return _read(db, job)
 
 
@@ -187,7 +196,16 @@ def retry_job(job_id: int, db: SessionDep, access: Access):
     try:
         run_generation_job.delay(job.id)
     except Exception:
-        pass
+        logger.exception(
+            "Media generation retry dispatch failed", extra={"generation_job_id": job.id}
+        )
+        job.status = "failed"
+        job.error_code = "queue_unavailable"
+        job.error_message = "任务队列不可用，请检查 Redis 和 Worker 后重试。"
+        job.finished_at = datetime.now(UTC)
+        db.add(GenerationEvent(job_id=job.id, status="failed", message=job.error_message))
+        db.commit()
+        db.refresh(job)
     return _read(db, job)
 
 

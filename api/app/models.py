@@ -150,7 +150,7 @@ class Store(Base):
 
 
 class ServiceConfig(Base):
-    """按工作空间保存非敏感模型参数；密钥只从运行环境读取。"""
+    """按工作空间保存服务参数；API Key 使用应用密钥加密后保存。"""
 
     __tablename__ = "service_configs"
     __table_args__ = (
@@ -163,6 +163,8 @@ class ServiceConfig(Base):
     target: Mapped[str] = mapped_column(String(20))
     provider: Mapped[str] = mapped_column(String(40))
     model: Mapped[str] = mapped_column(String(120), default="")
+    endpoint_url: Mapped[str] = mapped_column(String(1000), default="")
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -12,10 +12,17 @@ from sqlalchemy.exc import IntegrityError
 from app.api.dependencies import SessionDep, get_workspace_access, require_roles
 from app.models import (
     AdProposal,
+    AgentApproval,
+    AgentStep,
+    AgentTask,
     BusinessMetric,
     Competitor,
     ContentVersion,
+    GenerationEvent,
+    GenerationJob,
+    ImportBatch,
     InventoryMovement,
+    MediaAsset,
     Product,
     ProductSku,
     ReviewReport,
@@ -740,135 +747,553 @@ def seed_wireless_charger_demo(
         WorkspaceAccess, Depends(require_roles(WorkspaceRole.SUPERVISOR, WorkspaceRole.ADMIN))
     ],
 ):
-    """创建可重复执行的无线充防守演示数据，所有文本明确标注为模拟数据。"""
+    """幂等补齐全流程演示数据；所有记录都带有模拟标记，不代表真实经营数据。"""
     demo_key = "demo-wireless-charger-v1"
+    now = datetime.now(UTC)
     store = db.scalar(
         select(Store).where(Store.workspace_id == access.workspace.id, Store.name == "无线充演示店")
     )
-    product = None
-    if store:
-        product = db.scalar(
-            select(Product).where(
-                Product.store_id == store.id, Product.name == "无线充热销款（模拟演示）"
-            )
-        )
-    if product:
-        return DemoSeedRead(
-            demo_key=demo_key,
-            product_id=product.id,
-            store_id=store.id,
-            created=False,
-            label="模拟/演示数据",
-        )
+    created = store is None
     store = store or Store(workspace_id=access.workspace.id, name="无线充演示店", platform="淘宝")
-    db.add(store)
-    db.flush()
-    product = Product(
-        store_id=store.id,
-        name="无线充热销款（模拟演示）",
-        category="3C 数码",
-        description="[模拟演示数据] 低价竞品冲击下的无线充热销款防守场景",
-        target_audience="[模拟演示数据] 通勤办公人群",
-        selling_points="[模拟演示数据] 15W 快充、折叠便携",
-    )
-    db.add(product)
-    db.flush()
-    db.add(
-        ProductSku(
-            product_id=product.id,
-            sku_code="WLC-15W",
-            specification="黑色 15W（模拟）",
-            price=129,
-            stock=88,
-            warning_threshold=20,
+    if store.id is None:
+        db.add(store)
+        db.flush()
+    product = db.scalar(
+        select(Product).where(
+            Product.store_id == store.id, Product.name == "无线充热销款（模拟演示）"
         )
     )
-    db.add(
-        Competitor(
-            product_id=product.id,
-            name="低价无线充竞品（模拟）",
-            price=79,
-            attributes={"功率": "15W", "场景": "低价冲击"},
-            source_status="manual",
-            source_snapshot={"demo_key": demo_key},
+    if product is None:
+        product = Product(
+            store_id=store.id,
+            name="无线充热销款（模拟演示）",
+            category="3C 数码",
+            description="[模拟演示数据] 低价竞品冲击下的无线充热销款防守场景",
+            target_audience="[模拟演示数据] 通勤办公人群",
+            selling_points="[模拟演示数据] 15W 快充、折叠便携",
         )
-    )
-    for content_type, content in [
-        (
-            "diagnosis",
-            {"label": "模拟演示数据", "finding": "竞品价格低 38.8%，需强化快充与便携卖点"},
-        ),
-        ("image_idea", {"label": "模拟演示数据", "idea": "办公桌面折叠无线充对比创意"}),
-        ("video_script", {"label": "模拟演示数据", "script": "展示通勤收纳与 15W 快充场景"}),
-    ]:
-        db.add(
-            ContentVersion(
-                product_id=product.id,
-                content_type=content_type,
-                slot_key="demo-wireless",
-                version_no=1,
-                status="confirmed",
-                source="human",
-                content=content,
-                updated_by=access.user.id,
+        db.add(product)
+        db.flush()
+        created = True
+
+    # 多规格库存包含正常和预警状态，便于查看大盘与库存流水。
+    sku_specs = [
+        ("WLC-15W", "黑色 15W（模拟）", Decimal("129.00"), 88, 20),
+        ("WLC-15W-WHITE", "白色 15W（模拟）", Decimal("139.00"), 6, 12),
+        ("WLC-FOLD", "折叠款 15W（模拟）", Decimal("159.00"), 42, 10),
+    ]
+    skus: list[ProductSku] = []
+    for sku_code, specification, price, stock, threshold in sku_specs:
+        sku = db.scalar(
+            select(ProductSku).where(
+                ProductSku.product_id == product.id, ProductSku.sku_code == sku_code
             )
         )
-    metric = BusinessMetric(
-        workspace_id=access.workspace.id,
-        product_id=product.id,
-        period_start=date(2026, 1, 1),
-        period_end=date(2026, 1, 31),
-        source="demo",
-        target_gmv=Decimal("18000"),
-        actual_gmv=Decimal("15600"),
-        target_impressions=10000,
-        actual_impressions=11200,
-        target_ctr=Decimal("0.08"),
-        actual_ctr=Decimal("0.075"),
-        target_conversion_rate=Decimal("0.04"),
-        actual_conversion_rate=Decimal("0.035"),
-        target_roi=Decimal("2.5"),
-        actual_roi=Decimal("2.1"),
-        created_by=access.user.id,
-    )
-    db.add(metric)
-    db.flush()
-    db.add(
-        AdProposal(
-            workspace_id=access.workspace.id,
-            product_id=product.id,
-            content={"label": "模拟演示数据", "strategy": "守住快充与便携卖点，测试中高客单人群"},
-            risk_level="normal",
-            status="pending",
-            submitted_by=access.user.id,
+        if sku is None:
+            sku = ProductSku(
+                product_id=product.id,
+                sku_code=sku_code,
+                specification=specification,
+                price=price,
+                stock=stock,
+                warning_threshold=threshold,
+            )
+            db.add(sku)
+            db.flush()
+        skus.append(sku)
+        movement_reason = f"[模拟演示数据] {demo_key} 期初库存"
+        if db.scalar(
+            select(InventoryMovement.id).where(
+                InventoryMovement.sku_id == sku.id,
+                InventoryMovement.reason == movement_reason,
+            )
+        ) is None:
+            db.add(
+                InventoryMovement(
+                    product_id=product.id,
+                    sku_id=sku.id,
+                    actor_user_id=access.user.id,
+                    delta=stock,
+                    quantity_after=stock,
+                    reason=movement_reason,
+                )
+            )
+
+    competitor_specs = [
+        ("低价无线充竞品（模拟）", Decimal("79.00"), {"功率": "15W", "场景": "低价冲击"}),
+        ("磁吸无线充竞品（模拟）", Decimal("119.00"), {"功率": "15W", "接口": "磁吸"}),
+        ("桌面折叠充电座（模拟）", Decimal("169.00"), {"功率": "20W", "材质": "铝合金"}),
+    ]
+    for name, price, attributes in competitor_specs:
+        if db.scalar(
+            select(Competitor.id).where(
+                Competitor.product_id == product.id, Competitor.name == name
+            )
+        ) is None:
+            db.add(
+                Competitor(
+                    product_id=product.id,
+                    name=name,
+                    price=price,
+                    attributes=attributes,
+                    source_status="manual",
+                    source_snapshot={"demo_key": demo_key},
+                )
+            )
+
+    # 创意、媒体库和复盘页面共用同一商品下的可确认版本。
+    content_templates = {
+        "diagnosis": [
+            {"finding": "低价竞品集中在 79 元区间", "recommendation": "突出折叠便携和质保差异"},
+            {"finding": "白色规格库存偏低", "recommendation": "活动前优先补充白色款库存"},
+            {"finding": "桌面场景转化较高", "recommendation": "扩展办公桌和差旅场景素材"},
+        ],
+        "image_idea": [
+            {"idea": "办公桌面折叠无线充对比创意", "headline": "桌面更整洁，充电更省心"},
+            {"idea": "15W 快充功率与兼容设备展示", "headline": "通勤办公，快速补能"},
+            {"idea": "折叠收纳和差旅便携场景", "headline": "收起即走，轻松出差"},
+        ],
+        "video_script": [
+            {"script": "展示通勤收纳与 15W 快充场景", "hook": "包里少一根线"},
+            {"script": "办公桌前单手展开并开始充电", "hook": "桌面充电一步到位"},
+            {"script": "对比普通支架与折叠磁吸底座", "hook": "稳固与便携可以兼得"},
+        ],
+    }
+    versions: dict[str, list[ContentVersion]] = {}
+    for content_type, examples in content_templates.items():
+        versions[content_type] = []
+        for version_no, example in enumerate(examples, start=1):
+            version = db.scalar(
+                select(ContentVersion).where(
+                    ContentVersion.product_id == product.id,
+                    ContentVersion.content_type == content_type,
+                    ContentVersion.slot_key == "demo-wireless",
+                    ContentVersion.version_no == version_no,
+                )
+            )
+            if version is None:
+                version = ContentVersion(
+                    product_id=product.id,
+                    content_type=content_type,
+                    slot_key="demo-wireless",
+                    version_no=version_no,
+                    status="confirmed",
+                    source="human",
+                    content={"label": "模拟演示数据", **example},
+                    updated_by=access.user.id,
+                )
+                db.add(version)
+                db.flush()
+            versions[content_type].append(version)
+
+    # 四个连续经营周期用于趋势图和周期对比。
+    metrics: list[BusinessMetric] = []
+    metric_values = [
+        (date(2026, 1, 1), date(2026, 1, 31), 18000, 15600, 2.1),
+        (date(2026, 2, 1), date(2026, 2, 28), 19000, 18400, 2.4),
+        (date(2026, 3, 1), date(2026, 3, 31), 21000, 22800, 2.8),
+        (date(2026, 4, 1), date(2026, 4, 30), 23000, 21600, 2.6),
+    ]
+    for period_start, period_end, target_gmv, actual_gmv, roi in metric_values:
+        metric = db.scalar(
+            select(BusinessMetric).where(
+                BusinessMetric.product_id == product.id,
+                BusinessMetric.period_start == period_start,
+                BusinessMetric.period_end == period_end,
+                BusinessMetric.source == "demo",
+            )
+        )
+        if metric is None:
+            metric = BusinessMetric(
+                workspace_id=access.workspace.id,
+                product_id=product.id,
+                period_start=period_start,
+                period_end=period_end,
+                source="demo",
+                target_gmv=Decimal(target_gmv),
+                actual_gmv=Decimal(actual_gmv),
+                target_impressions=10000,
+                actual_impressions=11200,
+                target_ctr=Decimal("0.08"),
+                actual_ctr=Decimal("0.075"),
+                target_conversion_rate=Decimal("0.04"),
+                actual_conversion_rate=Decimal("0.035"),
+                target_roi=Decimal("2.5"),
+                actual_roi=Decimal(str(roi)),
+                created_by=access.user.id,
+            )
+            db.add(metric)
+            db.flush()
+        metrics.append(metric)
+
+    # 媒体列表提供通过、待审核、驳回及失败状态，文件路径标记为虚拟演示素材。
+    media_examples = [
+        ("image", 1, "approved", "succeeded"),
+        ("image", 2, "pending", "succeeded"),
+        ("video", 1, "rejected", "succeeded"),
+        ("video", 2, "pending", "failed"),
+    ]
+    for media_type, version_no, review_status, job_status in media_examples:
+        content_type = "image_idea" if media_type == "image" else "video_script"
+        content_version = versions[content_type][version_no - 1]
+        idempotency_key = f"{demo_key}-{media_type}-v{version_no}"
+        job = db.scalar(
+            select(GenerationJob).where(
+                GenerationJob.workspace_id == access.workspace.id,
+                GenerationJob.idempotency_key == idempotency_key,
+            )
+        )
+        if job is None:
+            job = GenerationJob(
+                workspace_id=access.workspace.id,
+                product_id=product.id,
+                content_version_id=content_version.id,
+                media_type=media_type,
+                idempotency_key=idempotency_key,
+                status=job_status,
+                provider="demo",
+                attempts=1,
+                max_retries=3,
+                error_code="demo_provider_unavailable" if job_status == "failed" else None,
+                error_message=(
+                    "[模拟演示数据] 示例任务失败，可体验重试操作"
+                    if job_status == "failed"
+                    else None
+                ),
+                created_by=access.user.id,
+                started_at=now,
+                finished_at=now,
+            )
+            db.add(job)
+            db.flush()
+            db.add(
+                GenerationEvent(
+                    job_id=job.id,
+                    status=job_status,
+                    message=(
+                        "[模拟演示数据] 示例任务已完成"
+                        if job_status == "succeeded"
+                        else "[模拟演示数据] 示例任务失败，可重试"
+                    ),
+                    details={"demo_key": demo_key},
+                )
+            )
+        if job_status == "succeeded" and db.scalar(
+            select(MediaAsset.id).where(MediaAsset.job_id == job.id)
+        ) is None:
+            db.add(
+                MediaAsset(
+                    workspace_id=access.workspace.id,
+                    product_id=product.id,
+                    job_id=job.id,
+                    content_version_id=content_version.id,
+                    media_type=media_type,
+                    storage_path=f"demo/{demo_key}/{media_type}-v{version_no}.txt",
+                    status="available",
+                    review_status=review_status,
+                    tags=["模拟演示数据", "主图" if media_type == "image" else "短视频"],
+                    updated_by=access.user.id,
+                )
+            )
+
+    # 用待审批任务演示 Agent checkpoint 与人工审批入口。
+    agent_name = "无线充商品经营分析（模拟待审批）"
+    task = db.scalar(
+        select(AgentTask).where(
+            AgentTask.workspace_id == access.workspace.id,
+            AgentTask.product_id == product.id,
+            AgentTask.name == agent_name,
         )
     )
-    db.add(
-        ReviewReport(
+    if task is None:
+        task = AgentTask(
             workspace_id=access.workspace.id,
             product_id=product.id,
-            metric_id=metric.id,
-            content={
-                "label": "模拟演示数据",
-                "summary": "低价竞品冲击下，优先优化素材卖点和转化承接",
-            },
             created_by=access.user.id,
-            status="draft",
+            name=agent_name,
+            goal="[模拟演示数据] 汇总经营表现并提交建议供主管审核",
+            requested_tools=[
+                "catalog_snapshot",
+                "content_summary",
+                "performance_summary",
+                "recommendation_draft",
+                "recommendation_publish",
+            ],
+            context={"product_name": product.name, "demo_key": demo_key},
+            status="waiting_approval",
+            current_step=5,
+            checkpoint_version=4,
+            paused_at=now,
+        )
+        db.add(task)
+        db.flush()
+        step_examples = [
+            (
+                "catalog_snapshot",
+                "succeeded",
+                {"sku_count": len(skus), "stock_total": sum(sku.stock for sku in skus)},
+            ),
+            ("content_summary", "succeeded", {"confirmed_count": 9}),
+            (
+                "performance_summary",
+                "succeeded",
+                {"period_count": len(metrics), "actual_gmv": "78400.00"},
+            ),
+            ("recommendation_draft", "succeeded", {"recommendation": "提升折叠便携卖点曝光"}),
+            ("approval_gate", "waiting_approval", {}),
+            ("recommendation_publish", "pending", {}),
+        ]
+        steps = []
+        for step_no, (tool_name, step_status, output) in enumerate(step_examples, start=1):
+            step = AgentStep(
+                task_id=task.id,
+                step_no=step_no,
+                tool_name=tool_name,
+                status=step_status,
+                input_summary={"demo_key": demo_key},
+                output_summary={"label": "模拟演示数据", **output},
+                checkpoint={"version": step_no} if step_status == "succeeded" else {},
+                started_at=now,
+                finished_at=now if step_status == "succeeded" else None,
+            )
+            db.add(step)
+            steps.append(step)
+        db.flush()
+        db.add(
+            AgentApproval(
+                task_id=task.id,
+                step_id=steps[4].id,
+                workspace_id=access.workspace.id,
+                risk_level="high",
+                status="pending",
+                requested_by=access.user.id,
+            )
+        )
+
+    # 追加待审核的投放建议和每期复盘快照，便于从单品页体验审批链路。
+    proposal_specs = [
+        ("normal", "模拟常规素材实验：测试折叠便携卖点"),
+        ("high", "模拟高风险预算调整：需要主管审批"),
+    ]
+    for risk_level, strategy in proposal_specs:
+        demo_content = {"label": "模拟演示数据", "demo_key": demo_key, "strategy": strategy}
+        if not any(
+            proposal.content.get("demo_key") == demo_key
+            and proposal.content.get("strategy") == strategy
+            for proposal in db.scalars(
+                select(AdProposal).where(AdProposal.product_id == product.id)
+            )
+        ):
+            db.add(
+                AdProposal(
+                    workspace_id=access.workspace.id,
+                    product_id=product.id,
+                    content=demo_content,
+                    risk_level=risk_level,
+                    status="pending",
+                    submitted_by=access.user.id,
+                )
+            )
+    existing_reports = list(
+        db.scalars(select(ReviewReport).where(ReviewReport.product_id == product.id))
+    )
+    for metric in metrics:
+        if not any(
+            report.metric_id == metric.id and report.content.get("demo_key") == demo_key
+            for report in existing_reports
+        ):
+            report = ReviewReport(
+                workspace_id=access.workspace.id,
+                product_id=product.id,
+                metric_id=metric.id,
+                content={
+                    "label": "模拟演示数据",
+                    "demo_key": demo_key,
+                    "summary": "根据竞品价格、库存和经营周期优化卖点与补货节奏",
+                    "action_items": ["补充白色规格库存", "测试办公桌面创意"],
+                },
+                created_by=access.user.id,
+                status="draft",
+            )
+            db.add(report)
+            existing_reports.append(report)
+
+    # 待确认批次展示导入预览中的有效行和错误行；确认后只会增加一件模拟商品。
+    import_batch_key = f"{demo_key}-products-import"
+    if db.scalar(
+        select(ImportBatch.id).where(
+            ImportBatch.workspace_id == access.workspace.id,
+            ImportBatch.batch_key == import_batch_key,
+        )
+    ) is None:
+        import_rows = [
+            {
+                "line": 2,
+                "data": {
+                    "store_id": str(store.id),
+                    "name": "导入流程体验商品（模拟）",
+                    "category": "3C 数码",
+                    "description": "[模拟演示数据] 可在导入中心预览并确认导入",
+                    "platform_item_code": "DEMO-IMPORT-WLC-01",
+                    "cost": "58.00",
+                    "target_audience": "通勤办公人群",
+                    "selling_points": "导入确认流程演示",
+                },
+                "valid": True,
+                "errors": [],
+            },
+            {
+                "line": 3,
+                "data": {
+                    "store_id": "-1",
+                    "name": "",
+                    "category": "3C 数码",
+                    "description": "[模拟演示数据] 错误行不会被导入",
+                    "platform_item_code": "DEMO-IMPORT-INVALID",
+                    "cost": "-1",
+                    "target_audience": "",
+                    "selling_points": "",
+                },
+                "valid": False,
+                "errors": [
+                    "store_id 不属于当前工作空间",
+                    "name 不能为空",
+                    "cost 不能为负数",
+                ],
+            },
+        ]
+        db.add(
+            ImportBatch(
+                workspace_id=access.workspace.id,
+                batch_key=import_batch_key,
+                data_type="products",
+                filename="wireless-charger-demo.csv",
+                status="preview",
+                version=1,
+                rows=import_rows,
+                valid_count=1,
+                error_count=1,
+                created_by=access.user.id,
+            )
+        )
+
+    # 第二个店铺和商品用于演示跨店铺经营趋势与商品筛选。
+    second_store = db.scalar(
+        select(Store).where(
+            Store.workspace_id == access.workspace.id, Store.name == "无线充京东演示店"
         )
     )
+    if second_store is None:
+        second_store = Store(
+            workspace_id=access.workspace.id,
+            name="无线充京东演示店",
+            platform="京东",
+        )
+        db.add(second_store)
+        db.flush()
+        created = True
+    second_product = db.scalar(
+        select(Product).where(
+            Product.store_id == second_store.id, Product.name == "双线圈无线充电座（模拟演示）"
+        )
+    )
+    if second_product is None:
+        second_product = Product(
+            store_id=second_store.id,
+            name="双线圈无线充电座（模拟演示）",
+            category="3C 数码",
+            description="[模拟演示数据] 京东店铺的多设备无线充场景",
+            target_audience="[模拟演示数据] 家庭与办公多设备用户",
+            selling_points="[模拟演示数据] 双线圈、横竖可充",
+        )
+        db.add(second_product)
+        db.flush()
+        created = True
+    second_sku = db.scalar(
+        select(ProductSku).where(
+            ProductSku.product_id == second_product.id, ProductSku.sku_code == "WLC-DUAL-01"
+        )
+    )
+    if second_sku is None:
+        second_sku = ProductSku(
+            product_id=second_product.id,
+            sku_code="WLC-DUAL-01",
+            specification="双线圈 黑色（模拟）",
+            price=Decimal("189.00"),
+            stock=31,
+            warning_threshold=10,
+        )
+        db.add(second_sku)
+        db.flush()
+    if db.scalar(
+        select(Competitor.id).where(
+            Competitor.product_id == second_product.id,
+            Competitor.name == "双线圈磁吸竞品（模拟）",
+        )
+    ) is None:
+        db.add(
+            Competitor(
+                product_id=second_product.id,
+                name="双线圈磁吸竞品（模拟）",
+                price=Decimal("199.00"),
+                attributes={"线圈": "双线圈", "认证": "Qi2"},
+                source_status="manual",
+                source_snapshot={"demo_key": demo_key},
+            )
+        )
+    for period_start, period_end, target_gmv, actual_gmv, roi in metric_values[1:]:
+        if db.scalar(
+            select(BusinessMetric.id).where(
+                BusinessMetric.product_id == second_product.id,
+                BusinessMetric.period_start == period_start,
+                BusinessMetric.period_end == period_end,
+                BusinessMetric.source == "demo",
+            )
+        ) is None:
+            db.add(
+                BusinessMetric(
+                    workspace_id=access.workspace.id,
+                    product_id=second_product.id,
+                    period_start=period_start,
+                    period_end=period_end,
+                    source="demo",
+                    target_gmv=Decimal(target_gmv),
+                    actual_gmv=Decimal(actual_gmv) * Decimal("1.04"),
+                    target_impressions=7200,
+                    actual_impressions=7900,
+                    target_ctr=Decimal("0.07"),
+                    actual_ctr=Decimal("0.076"),
+                    target_conversion_rate=Decimal("0.035"),
+                    actual_conversion_rate=Decimal("0.038"),
+                    target_roi=Decimal("2.3"),
+                    actual_roi=Decimal(str(roi)),
+                    created_by=access.user.id,
+                )
+            )
+
     record_audit_event(
         db,
         access=access,
         action="catalog.demo_seed",
         resource_type="product",
         resource_id=str(product.id),
-        details={"demo_key": demo_key},
+        details={"demo_key": demo_key, "created": created},
     )
     db.commit()
+    included = [
+        "2 个演示店铺、2 件演示商品和多规格库存",
+        "竞品对标、结构化诊断与多版本创意",
+        "4 个连续经营周期、趋势对比与复盘报告",
+        "通过/待审核/驳回/失败素材及任务时间线",
+        "待审批的 Agent 任务与普通/高风险投放建议",
+        "导入中心的一条有效预览行和一条错误行，可自行确认有效数据",
+        "所有演示记录均标注为模拟数据，可重复补齐",
+    ]
     return DemoSeedRead(
         demo_key=demo_key,
         product_id=product.id,
         store_id=store.id,
-        created=True,
+        created=created,
         label="模拟/演示数据",
+        included=included,
     )
