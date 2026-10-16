@@ -6,12 +6,15 @@ import secrets
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
+from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from app.api.dependencies import SessionDep, get_workspace_access
-from app.models import BusinessMetric, ImportBatch, Product, ProductSku, Store
+from app.api.dependencies import SessionDep, get_current_user, get_workspace_access
+from app.models import BusinessMetric, ImportBatch, Product, ProductSku, Store, User
 from app.schemas.imports import ImportCommit, ImportPreviewRead
 from app.services.audit import record_audit_event
 from app.services.workspaces import WorkspaceAccess
@@ -51,6 +54,10 @@ UPLOAD_FILE = File(...)
 
 
 def _parse(data: bytes, filename: str) -> list[dict]:
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(413, "导入文件不能超过 5 MB")
+    if not filename.lower().endswith((".csv", ".xlsx")):
+        raise HTTPException(422, "仅支持 CSV 或 XLSX 文件")
     if filename.lower().endswith(".xlsx"):
         try:
             from openpyxl import load_workbook
@@ -63,7 +70,7 @@ def _parse(data: bytes, filename: str) -> list[dict]:
                 for row in rows[1:]
                 if any(v is not None for v in row)
             ]
-        except (ImportError, ValueError, IndexError) as exc:
+        except (ImportError, ValueError, IndexError, KeyError, OSError, BadZipFile) as exc:
             raise HTTPException(422, "Excel 文件无法解析") from exc
     try:
         text = data.decode("utf-8-sig")
@@ -87,35 +94,52 @@ def _validate(data_type: str, row: dict, number: int, db, access) -> dict:
             store = db.get(Store, int(normalized["store_id"]))
             if store is None or store.workspace_id != access.workspace.id:
                 errors.append("store_id 不属于当前工作空间")
-            if normalized.get("cost") not in (None, ""):
-                Decimal(str(normalized["cost"]))
+            if normalized.get("cost") not in (None, "") and Decimal(str(normalized["cost"])) < 0:
+                errors.append("cost 不能为负数")
         elif data_type == "skus":
             product = db.get(Product, int(normalized["product_id"]))
             if (
                 product is None
-                or db.get(Store, product.store_id).workspace_id != access.workspace.id
+                or (store := db.get(Store, product.store_id)) is None
+                or store.workspace_id != access.workspace.id
             ):
                 errors.append("product_id 不属于当前工作空间")
-            for field in ("price", "stock", "warning_threshold"):
-                Decimal(str(normalized[field]))
+            if Decimal(str(normalized["price"])) < 0:
+                errors.append("price 不能为负数")
+            for field in ("stock", "warning_threshold"):
+                value = Decimal(str(normalized[field]))
+                if value < 0 or value != value.to_integral_value():
+                    errors.append(f"{field} 必须为非负整数")
         else:
             product = db.get(Product, int(normalized["product_id"]))
             if (
                 product is None
-                or db.get(Store, product.store_id).workspace_id != access.workspace.id
+                or (store := db.get(Store, product.store_id)) is None
+                or store.workspace_id != access.workspace.id
             ):
                 errors.append("product_id 不属于当前工作空间")
-            date.fromisoformat(str(normalized["period_start"]))
-            date.fromisoformat(str(normalized["period_end"]))
+            start = date.fromisoformat(str(normalized["period_start"]))
+            end = date.fromisoformat(str(normalized["period_end"]))
+            if end < start:
+                errors.append("period_end 不能早于 period_start")
+            if not str(normalized.get("source") or "").strip():
+                errors.append("source 不能为空")
             for field in fields[4:]:
-                Decimal(str(normalized[field]))
+                value = Decimal(str(normalized[field]))
+                if value < 0:
+                    errors.append(f"{field} 不能为负数")
+                if "impressions" in field and value != value.to_integral_value():
+                    errors.append(f"{field} 必须为非负整数")
+                if "rate" in field or "ctr" in field:
+                    if value < 0 or value > 1:
+                        errors.append(f"{field} 必须在 0 到 1 之间")
     except (ValueError, TypeError, InvalidOperation):
         errors.append("数值或日期格式不合法")
     return {"line": number, "data": normalized, "valid": not errors, "errors": errors}
 
 
 @router.get("/templates/{data_type}")
-def template(data_type: str):
+def template(data_type: str, _user: Annotated[User, Depends(get_current_user)]):
     if data_type not in TEMPLATES:
         raise HTTPException(404, "模板类型不存在")
     body = io.StringIO()
@@ -124,6 +148,19 @@ def template(data_type: str):
         iter([body.getvalue().encode("utf-8-sig")]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{data_type}-template.csv"'},
+    )
+
+
+@router.get("/batches", response_model=list[ImportPreviewRead])
+def list_batches(db: SessionDep, access: Access):
+    """返回当前工作空间的导入历史，供工作台复查批次状态。"""
+    return list(
+        db.scalars(
+            select(ImportBatch)
+            .where(ImportBatch.workspace_id == access.workspace.id)
+            .order_by(ImportBatch.created_at.desc())
+            .limit(50)
+        )
     )
 
 
@@ -220,6 +257,10 @@ def commit(batch_id: int, payload: ImportCommit, db: SessionDep, access: Access)
         resource_id=str(batch.id),
         details={"valid_count": batch.valid_count, "error_count": batch.error_count},
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "导入数据与已有记录重复，请修正后重新预览") from exc
     db.refresh(batch)
     return batch
