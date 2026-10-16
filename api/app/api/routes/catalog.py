@@ -3,7 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import SessionDep, get_workspace_access
@@ -17,6 +17,7 @@ from app.schemas.catalog import (
     InventoryMovementRead,
     ProductCreate,
     ProductList,
+    ProductListItem,
     ProductRead,
     ProductUpdate,
     SkuCreate,
@@ -73,14 +74,33 @@ def _sku(db: SessionDep, product_id: int, sku_id: int, *, lock: bool = False) ->
 
 
 @router.get("/stores", response_model=list[StoreRead])
-def list_stores(db: SessionDep, access: Access) -> list[Store]:
-    return list(
+def list_stores(db: SessionDep, access: Access) -> list[StoreRead]:
+    stores = list(
         db.scalars(
             select(Store)
             .where(Store.workspace_id == access.workspace.id, Store.status == "active")
             .order_by(Store.id.desc())
         )
     )
+    counts = (
+        dict(
+            db.execute(
+                select(Product.store_id, func.count(Product.id))
+                .where(
+                    Product.store_id.in_([store.id for store in stores]), Product.status == "active"
+                )
+                .group_by(Product.store_id)
+            ).all()
+        )
+        if stores
+        else {}
+    )
+    return [
+        StoreRead.model_validate(store).model_copy(
+            update={"product_count": counts.get(store.id, 0)}
+        )
+        for store in stores
+    ]
 
 
 @router.post("/stores", response_model=StoreRead, status_code=status.HTTP_201_CREATED)
@@ -128,6 +148,10 @@ def list_products(
     access: Access,
     store_id: int | None = None,
     q: str = "",
+    platform: str = "",
+    stock_status: str = "",
+    profile_incomplete: bool = False,
+    sort: str = "newest",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ProductList:
@@ -140,15 +164,101 @@ def list_products(
     ]
     if store_id is not None:
         condition.append(Product.store_id == store_id)
+    if platform.strip():
+        condition.append(Store.platform == platform.strip())
     if q.strip():
-        condition.append(Product.name.ilike(f"%{q.strip()}%"))
+        pattern = f"%{q.strip()}%"
+        sku_match = (
+            select(ProductSku.id)
+            .where(
+                ProductSku.product_id == Product.id,
+                ProductSku.status == "active",
+                ProductSku.sku_code.ilike(pattern),
+            )
+            .exists()
+        )
+        condition.append(or_(Product.name.ilike(pattern), sku_match))
+    warning = (
+        select(ProductSku.id)
+        .where(
+            ProductSku.product_id == Product.id,
+            ProductSku.status == "active",
+            ProductSku.stock < ProductSku.warning_threshold,
+        )
+        .exists()
+    )
+    if stock_status == "warning":
+        condition.append(warning)
+    elif stock_status == "normal":
+        condition.append(~warning)
+        condition.append(
+            select(ProductSku.id)
+            .where(ProductSku.product_id == Product.id, ProductSku.status == "active")
+            .exists()
+        )
+    elif stock_status == "no_sku":
+        condition.append(
+            ~select(ProductSku.id)
+            .where(ProductSku.product_id == Product.id, ProductSku.status == "active")
+            .exists()
+        )
+    elif stock_status:
+        raise HTTPException(status_code=422, detail="库存状态不正确")
+    if profile_incomplete:
+        condition.append(
+            or_(
+                Product.platform_item_code == "",
+                Product.target_audience == "",
+                Product.selling_points == "",
+                Product.cost.is_(None),
+            )
+        )
+    if sort not in {"newest", "updated"}:
+        raise HTTPException(status_code=422, detail="排序方式不正确")
     base = select(Product).join(Store, Product.store_id == Store.id).where(*condition)
     total = db.scalar(select(func.count()).select_from(Product).join(Store).where(*condition)) or 0
     items = list(
-        db.scalars(base.order_by(Product.id.desc()).offset((page - 1) * page_size).limit(page_size))
+        db.scalars(
+            base.order_by(
+                (Product.updated_at if sort == "updated" else Product.id).desc(), Product.id.desc()
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
     )
+    # 分页后仅汇总当前页 SKU，避免逐商品查询与重复计数。
+    sku_rows = (
+        db.execute(
+            select(
+                ProductSku.product_id,
+                func.count(ProductSku.id),
+                func.min(ProductSku.price),
+                func.max(ProductSku.price),
+                func.max(case((ProductSku.stock < ProductSku.warning_threshold, 1), else_=0)),
+            )
+            .where(
+                ProductSku.product_id.in_([item.id for item in items]),
+                ProductSku.status == "active",
+            )
+            .group_by(ProductSku.product_id)
+        ).all()
+        if items
+        else []
+    )
+    sku_by_product = {row[0]: row for row in sku_rows}
     return ProductList(
-        items=[ProductRead.model_validate(item) for item in items],
+        items=[
+            ProductListItem(
+                **ProductRead.model_validate(item).model_dump(),
+                sku_count=sku_by_product[item.id][1] if item.id in sku_by_product else 0,
+                price_min=sku_by_product[item.id][2] if item.id in sku_by_product else None,
+                price_max=sku_by_product[item.id][3] if item.id in sku_by_product else None,
+                has_stock_warning=bool(sku_by_product[item.id][4])
+                if item.id in sku_by_product
+                else False,
+            )
+            for item in items
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -168,6 +278,10 @@ def create_product(payload: ProductCreate, db: SessionDep, access: Access) -> Pr
         name=name,
         category=payload.category.strip(),
         description=payload.description.strip(),
+        platform_item_code=payload.platform_item_code.strip(),
+        cost=payload.cost,
+        target_audience=payload.target_audience.strip(),
+        selling_points=payload.selling_points.strip(),
     )
     db.add(product)
     _commit(db)
@@ -186,7 +300,7 @@ def update_product(
 ) -> Product:
     product = _product(db, access, product_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
-        if value is None or (field == "name" and not value.strip()):
+        if (value is None and field != "cost") or (field == "name" and not value.strip()):
             raise HTTPException(status_code=422, detail="商品字段不能为空")
         setattr(product, field, value.strip() if isinstance(value, str) else value)
     _commit(db)

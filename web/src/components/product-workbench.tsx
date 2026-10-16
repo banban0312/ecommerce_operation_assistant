@@ -44,6 +44,7 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
     const values = new FormData(form);
     const body: Record<string, unknown> = {};
     values.forEach((value, key) => { body[key] = value; });
+    if (path === `products/${productId}` && values.get("cost") === "") body.cost = null;
     if (path.endsWith("/skus")) {
       body.stock = Number(values.get("stock"));
       body.warning_threshold = Number(values.get("warning_threshold"));
@@ -78,14 +79,14 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
   const store = stores.find((item) => item.id === product.store_id);
   return (
     <>
-      <div className="page-heading"><div><p className="eyebrow">PRODUCT WORKSPACE</p><h1>{product.name}</h1><p>{store?.name ?? "店铺"} · {store?.platform ?? "平台"} · {product.category || "未分类"}</p></div><Link className="button secondary" href="/">返回运营大盘</Link></div>
+      <div className="page-heading"><div><p className="eyebrow">PRODUCT WORKSPACE</p><h1>{product.name}</h1><p>{store?.name ?? "店铺"} · {store?.platform ?? "平台"} · {product.category || "未分类"}</p></div><Link className="button secondary" href="/products">返回商品工作台</Link></div>
       {error && <p className="notice error" role="alert">{error}</p>}
       <div className="context-bar"><label>当前商品 <select value={productId} onChange={(event) => router.push(`/products/${event.target.value}`)}>{allProducts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>商品 ID：{product.id}</span><span>SKU：{skus.length}</span><span>竞品：{competitors.length}</span></div>
       <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><span>智能诊断 · 待开放</span><span>创意素材 · 待开放</span><span>投放复盘 · 待开放</span></nav>
 
       <section className="panel" id="profile">
         <div className="section-heading"><div><p className="eyebrow">PRODUCT PROFILE</p><h2>商品档案</h2></div><button className="button secondary" onClick={() => setEditProduct(!editProduct)}>编辑档案</button></div>
-        {editProduct ? <form className="inline-form" onSubmit={(event) => submit(event, `products/${productId}`, "PATCH", () => setEditProduct(false))}><label>商品名称<input name="name" defaultValue={product.name} required maxLength={200} /></label><label>品类<input name="category" defaultValue={product.category} maxLength={120} /></label><label>基础说明<textarea name="description" defaultValue={product.description} maxLength={5000} /></label><button className="button primary" disabled={busy}>保存档案</button></form> : <div className="profile-grid"><div><small>所属店铺</small><strong>{store?.name ?? "店铺"}</strong></div><div><small>平台</small><strong>{store?.platform ?? "—"}</strong></div><div><small>品类</small><strong>{product.category || "未分类"}</strong></div><div><small>商品说明</small><p>{product.description || "尚未填写"}</p></div></div>}
+        {editProduct ? <form className="inline-form" onSubmit={(event) => submit(event, `products/${productId}`, "PATCH", () => setEditProduct(false))}><label>商品名称<input name="name" defaultValue={product.name} required maxLength={200} /></label><label>品类<input name="category" defaultValue={product.category} maxLength={120} /></label><label>平台商品编号<input name="platform_item_code" defaultValue={product.platform_item_code} maxLength={100} /></label><label>成本（元）<input name="cost" type="number" min="0" step="0.01" defaultValue={product.cost ?? ""} /></label><label>目标人群<input name="target_audience" defaultValue={product.target_audience} maxLength={500} /></label><label>核心卖点<textarea name="selling_points" defaultValue={product.selling_points} maxLength={5000} /></label><label>基础说明<textarea name="description" defaultValue={product.description} maxLength={5000} /></label><button className="button primary" disabled={busy}>保存档案</button></form> : <div className="profile-grid"><div><small>所属店铺</small><strong>{store?.name ?? "店铺"}</strong></div><div><small>平台</small><strong>{store?.platform ?? "—"}</strong></div><div><small>平台商品编号</small><strong>{product.platform_item_code || "待完善"}</strong></div><div><small>品类</small><strong>{product.category || "未分类"}</strong></div><div><small>成本</small><strong>{product.cost === null ? "待完善" : `¥${product.cost}`}</strong></div><div><small>售价区间</small><strong>{skus.length ? `¥${Math.min(...skus.map((sku) => Number(sku.price)))}–${Math.max(...skus.map((sku) => Number(sku.price)))}` : "未定价"}</strong></div><div><small>目标人群</small><p>{product.target_audience || "待完善"}</p></div><div><small>核心卖点</small><p>{product.selling_points || "待完善"}</p></div><div><small>商品说明</small><p>{product.description || "尚未填写"}</p></div></div>}
       </section>
 
       <section className="panel" id="inventory">

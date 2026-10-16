@@ -29,6 +29,7 @@ class StoreRead(ReadModel):
     platform: str
     status: str
     created_at: datetime
+    product_count: int = 0
 
 
 class ProductCreate(BaseModel):
@@ -36,12 +37,20 @@ class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     category: str = Field(default="", max_length=120)
     description: str = Field(default="", max_length=5000)
+    platform_item_code: str = Field(default="", max_length=100)
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    target_audience: str = Field(default="", max_length=500)
+    selling_points: str = Field(default="", max_length=5000)
 
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=120)
     description: str | None = Field(default=None, max_length=5000)
+    platform_item_code: str | None = Field(default=None, max_length=100)
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    target_audience: str | None = Field(default=None, max_length=500)
+    selling_points: str | None = Field(default=None, max_length=5000)
     status: Literal["active", "archived"] | None = None
 
 
@@ -51,12 +60,24 @@ class ProductRead(ReadModel):
     name: str
     category: str
     description: str
+    platform_item_code: str
+    cost: Decimal | None
+    target_audience: str
+    selling_points: str
     status: str
     created_at: datetime
+    updated_at: datetime
+
+
+class ProductListItem(ProductRead):
+    sku_count: int = 0
+    price_min: Decimal | None = None
+    price_max: Decimal | None = None
+    has_stock_warning: bool = False
 
 
 class ProductList(BaseModel):
-    items: list[ProductRead]
+    items: list[ProductListItem]
     total: int
     page: int
     page_size: int

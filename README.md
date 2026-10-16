@@ -28,6 +28,7 @@ docker compose exec api python -m app.bootstrap
 | 入口 | 默认地址 | 作用 |
 | --- | --- | --- |
 | 运营大盘 | http://localhost:3000 | 登录后创建店铺和商品、检索商品并查看库存预警 |
+| 商品工作台总览 | http://localhost:3000/products | 按商品名称或 SKU 检索，筛选店铺、平台和库存状态，进入单品工作台 |
 | 登录页 | http://localhost:3000/login | 使用初始化的管理员账号登录 |
 | Web 存活检查 | http://localhost:3000/health | 检查 Next.js 服务是否存活 |
 | Web → API 检查 | http://localhost:3000/api/health | 经 Web 服务访问 API 就绪检查 |
@@ -41,9 +42,9 @@ docker compose exec api python -m app.bootstrap
 
 ### M2 商品建档与库存
 
-登录后先在运营大盘新建店铺，再新建商品。点击商品列表中的“进入工作台”可录入不同规格的 SKU、价格和初始库存；每次库存调整都需要填写原因，并生成可查询的库存流水。SKU 库存低于预警阈值时，大盘会显示预警并提供商品入口。竞品资料按当前商品保存名称、价格和关键参数；切换商品后只显示该商品的数据。诊断、创意素材和投放复盘目前为后续阶段入口。
+登录后先在运营大盘新建店铺，再新建商品。顶部“商品工作台”进入独立商品池页面；首页商品列表仍可直接进入单品。商品池可按名称或 SKU 检索，并按店铺、平台、库存状态筛选；显示 SKU 数、售价区间、库存预警和档案待完善数量。单品档案可填写平台商品编号、成本、目标人群与核心卖点。进入单品后可录入不同规格的 SKU、价格和初始库存；每次库存调整都需要填写原因，并生成可查询的库存流水。SKU 库存低于预警阈值时，大盘和商品池会显示预警。竞品资料按当前商品保存名称、价格和关键参数；切换商品后只显示该商品的数据。诊断、创意素材和投放复盘目前为后续阶段入口。
 
-商品 API 位于 `/api/v1/catalog`，包括 `stores`、`products`、`products/{id}/skus`、`products/{id}/inventory-movements`、`products/{id}/competitors` 和 `dashboard`。请求需带 Bearer 令牌及 `X-Workspace-ID`；商品列表支持 `q`、`store_id`、`page`、`page_size`。Web 页面经同源 `/api/catalog/` 代理调用。库存调整接口接收调整后的绝对数量 `quantity` 和原因 `reason`。店铺、商品和 SKU 的删除接口执行归档，保留历史记录。
+商品 API 位于 `/api/v1/catalog`，包括 `stores`、`products`、`products/{id}/skus`、`products/{id}/inventory-movements`、`products/{id}/competitors` 和 `dashboard`。请求需带 Bearer 令牌及 `X-Workspace-ID`；商品列表支持 `q`（名称或 SKU）、`store_id`、`platform`、`stock_status`、`profile_incomplete`、`sort`、`page` 和 `page_size`。Web 页面经同源 `/api/catalog/` 代理调用。库存调整接口接收调整后的绝对数量 `quantity` 和原因 `reason`。店铺、商品和 SKU 的删除接口执行归档，保留历史记录。
 
 `migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 验证匿名访问保护、数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。若要同时验收登录、大盘与退出，在管理员初始化后执行以下命令，并在系统提示时输入账号密码；凭据不会写入仓库：
 

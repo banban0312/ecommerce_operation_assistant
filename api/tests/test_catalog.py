@@ -143,6 +143,42 @@ def test_catalog_inventory_competitor_and_product_isolation(catalog_client) -> N
         == []
     )
     assert client.get("/api/v1/catalog/products?q=夏季", headers=headers).json()["total"] == 1
+    # 商品池按 SKU 搜索时仍以商品分页，不能因多个规格重复计数。
+    sku_result = client.get("/api/v1/catalog/products?q=WHITE", headers=headers).json()
+    assert sku_result["total"] == 1
+    assert sku_result["items"][0]["sku_count"] == 2
+    assert sku_result["items"][0]["price_min"] == "99.00"
+    assert sku_result["items"][0]["price_max"] == "109.00"
+    assert sku_result["items"][0]["has_stock_warning"] is True
+    assert (
+        client.get("/api/v1/catalog/products?stock_status=warning", headers=headers).json()["total"]
+        == 1
+    )
+    assert (
+        client.get("/api/v1/catalog/products?stock_status=no_sku", headers=headers).json()["total"]
+        == 1
+    )
+    assert (
+        client.get("/api/v1/catalog/products?platform=抖音", headers=headers).json()["total"] == 2
+    )
+    profile = client.patch(
+        f"/api/v1/catalog/products/{product_id}",
+        json={
+            "platform_item_code": "DY-001",
+            "cost": "36.50",
+            "target_audience": "通勤女性",
+            "selling_points": "轻薄防晒",
+        },
+        headers=headers,
+    )
+    assert profile.status_code == 200
+    assert profile.json()["cost"] == "36.50"
+    assert (
+        client.get("/api/v1/catalog/products?profile_incomplete=true", headers=headers).json()[
+            "total"
+        ]
+        == 1
+    )
     assert (
         client.get("/api/v1/catalog/products?page=2&page_size=1", headers=headers).json()["items"][
             0

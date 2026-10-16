@@ -158,6 +158,10 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(120), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    platform_item_code: Mapped[str] = mapped_column(String(100), default="")
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    target_audience: Mapped[str] = mapped_column(String(500), default="")
+    selling_points: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

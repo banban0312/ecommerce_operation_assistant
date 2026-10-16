@@ -1,10 +1,17 @@
-export type Store = { id: number; name: string; platform: string; status: string };
-export type Product = { id: number; store_id: number; name: string; category: string; description: string; status: string };
+export type Store = { id: number; name: string; platform: string; status: string; product_count: number };
+export type Product = { id: number; store_id: number; name: string; category: string; description: string; platform_item_code: string; cost: string | null; target_audience: string; selling_points: string; status: string; updated_at: string };
+export type ProductListItem = Product & { sku_count: number; price_min: string | null; price_max: string | null; has_stock_warning: boolean };
 export type Sku = { id: number; product_id: number; sku_code: string; specification: string; price: string; stock: number; warning_threshold: number; status: string };
 export type Movement = { id: number; sku_id: number; delta: number; quantity_after: number; reason: string; created_at: string };
 export type Competitor = { id: number; name: string; price: string; attributes: Record<string, string>; source_url: string | null };
 export type Summary = { store_count: number; product_count: number; warning_count: number; warnings: { product_id: number; product_name: string; sku_id: number; sku_code: string; stock: number; warning_threshold: number }[] };
-export type ProductList = { items: Product[]; total: number; page: number; page_size: number };
+export type ProductList = { items: ProductListItem[]; total: number; page: number; page_size: number };
+
+// 商品报价属于 SKU；列表只展示规格价格区间，不再把某个 SKU 当作整件商品的售价。
+export function priceRange(product: ProductListItem): string {
+  if (product.price_min === null) return "未定价";
+  return product.price_min === product.price_max ? `¥${product.price_min}` : `¥${product.price_min}–${product.price_max}`;
+}
 
 export async function catalogRequest<T>(path: string, workspaceId: number, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/catalog/${path}`, {
