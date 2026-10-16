@@ -1,0 +1,38 @@
+"use client";
+
+import { ChangeEvent, useEffect, useState } from "react";
+import { importRequest, type ImportPreview } from "@/lib/imports";
+
+export function ImportWorkbench({ workspaceId }: { workspaceId: number }) {
+  const [type, setType] = useState("products");
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [history, setHistory] = useState<ImportPreview[]>([]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function loadHistory() {
+    try { setHistory(await importRequest<ImportPreview[]>("batches", workspaceId)); } catch { /* 当前上传不受历史加载影响 */ }
+  }
+  useEffect(() => {
+    let active = true;
+    void importRequest<ImportPreview[]>("batches", workspaceId)
+      .then((items) => { if (active) setHistory(items); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [workspaceId]);
+
+  async function upload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]; if (!file) return;
+    const form = new FormData(); form.append("file", file); setBusy(true);
+    try { setPreview(await importRequest<ImportPreview>(`preview?data_type=${type}`, workspaceId, { method: "POST", body: form })); setError(""); await loadHistory(); }
+    catch (e) { setError(e instanceof Error ? e.message : "预览失败"); }
+    finally { setBusy(false); event.target.value = ""; }
+  }
+  async function commit() {
+    if (!preview) return; setBusy(true);
+    try { setPreview(await importRequest<ImportPreview>(`${preview.id}/commit`, workspaceId, { method: "POST", body: JSON.stringify({ version: preview.version }), headers: { "Content-Type": "application/json" } })); setError(""); await loadHistory(); }
+    catch (e) { setError(e instanceof Error ? e.message : "导入失败"); }
+    finally { setBusy(false); }
+  }
+  return <section className="panel"><div className="section-heading"><div><p className="eyebrow">IMPORT CENTER</p><h1>批量导入中心</h1><p>先预览校验，再确认写入；预览阶段不会修改业务数据。</p></div></div><div className="section-actions"><select value={type} onChange={(e) => setType(e.target.value)}><option value="products">商品</option><option value="skus">SKU/库存</option><option value="metrics">经营数据</option></select><a className="button secondary" href={`/api/imports/templates/${type}`}>下载模板</a><label className="button primary">选择 CSV/Excel<input hidden type="file" accept=".csv,.xlsx" onChange={upload} /></label></div>{error&&<p className="notice error">{error}</p>}{preview&&<><p className="subtle">批次 #{preview.id} · 有效 {preview.valid_count} 行 · 错误 {preview.error_count} 行 · 状态 {preview.status}</p><div className="list-table">{preview.rows.map((row)=><div className="table-row" key={row.line}><span>第 {row.line} 行</span><strong>{row.valid?"有效":"错误"}</strong><span>{row.valid?"可导入":row.errors.join("；")}</span><code>{JSON.stringify(row.data)}</code></div>)}</div>{preview.status === "preview"&&<button className="button primary" disabled={busy||!preview.valid_count} onClick={commit}>确认导入有效行</button>}</>}{<div className="section-heading"><h2>最近导入批次</h2></div>}<div className="list-table">{history.filter((item)=>item.data_type===type).map((item)=><button className="table-row" key={item.id} onClick={()=>setPreview(item)}><span>#{item.id} {item.filename}</span><span>{item.valid_count} 有效 / {item.error_count} 错误</span><strong>{item.status}</strong></button>)}</div></section>;
+}
