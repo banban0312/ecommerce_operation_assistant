@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { catalogRequest, priceRange, type ProductList, type Store, type Summary } from "@/lib/catalog";
+import { catalogRequest, priceRange, type ProductList, type Store, type Summary, type Trends } from "@/lib/catalog";
 
 export function CatalogDashboard({ workspaceId }: { workspaceId: number }) {
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<ProductList>({ items: [], total: 0, page: 1, page_size: 20 });
   const [summary, setSummary] = useState<Summary>({ store_count: 0, product_count: 0, warning_count: 0, warnings: [] });
+  const [trends, setTrends] = useState<Trends>({ period_start: null, period_end: null, stores: [], series: [] });
   const [storeFilter, setStoreFilter] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -21,14 +22,15 @@ export function CatalogDashboard({ workspaceId }: { workspaceId: number }) {
       const params = new URLSearchParams({ page: String(page), page_size: "20" });
       if (storeFilter) params.set("store_id", storeFilter);
       if (query.trim()) params.set("q", query.trim());
-      const [nextStores, nextProducts, nextSummary] = await Promise.all([
+      const [nextStores, nextProducts, nextSummary, nextTrends] = await Promise.all([
         catalogRequest<Store[]>("stores", workspaceId),
         catalogRequest<ProductList>(`products?${params}`, workspaceId),
         catalogRequest<Summary>("dashboard", workspaceId),
+        catalogRequest<Trends>(`trends${storeFilter ? `?store_id=${storeFilter}` : ""}`, workspaceId),
       ]);
       setStores(nextStores);
       setProducts(nextProducts);
-      setSummary(nextSummary);
+      setSummary(nextSummary); setTrends(nextTrends);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "加载失败");
@@ -72,6 +74,11 @@ export function CatalogDashboard({ workspaceId }: { workspaceId: number }) {
         <div className="metric-card"><span>商品总数</span><strong>{summary.product_count}</strong><small>已建档商品</small></div>
         <div className="metric-card warning"><span>库存预警</span><strong>{summary.warning_count}</strong><small>低于 SKU 阈值</small></div>
         <div className="metric-card"><span>当前阶段</span><strong className="metric-text">M2</strong><small>商品与库存建档</small></div>
+      </section>
+
+      <section className="panel" id="trends">
+        <div className="section-heading"><div><p className="eyebrow">BUSINESS TRENDS</p><h2>经营趋势</h2></div><span className="muted-tag">按已录入周期展示 · 缺失不补零</span></div>
+        {trends.series.length ? <div className="list-table"><div className="table-head"><span>商品 / 店铺</span><span>周期</span><span>实际 GMV</span><span>目标 GMV</span><span>实际 ROI</span><span>转化率</span></div>{trends.series.flatMap(series => series.points.map(point => <div className="table-row" key={`${series.product_id}-${point.period_start}`}><span><strong>{series.product_name}</strong><small>{series.store_name}</small></span><span>{point.period_start} ～ {point.period_end}</span><span>{point.actual_gmv === null ? "—" : `¥${point.actual_gmv}`}</span><span>{point.target_gmv === null ? "—" : `¥${point.target_gmv}`}</span><span>{point.actual_roi ?? "—"}</span><span>{point.actual_conversion_rate ?? "—"}</span></div>))}</div> : <p className="subtle">暂无经营周期数据，请在单品复盘中录入目标与实际指标。</p>}
       </section>
 
       <section className="panel" id="stores">

@@ -1,6 +1,6 @@
 """商品主数据的输入约束和对外响应。"""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -147,7 +147,47 @@ class CompetitorRead(ReadModel):
     price: Decimal
     attributes: dict[str, str]
     source_url: str | None
+    source_status: str
+    source_fetched_at: datetime | None
+    source_snapshot: dict
     created_at: datetime
+
+
+class CompetitorParse(BaseModel):
+    source_url: str = Field(min_length=1, max_length=1000)
+
+
+class CompetitorParseRead(BaseModel):
+    source_url: str
+    supported: bool
+    status: str
+    message: str
+    fields: dict[str, str | None]
+    fetched_at: datetime | None = None
+
+
+class TrendPoint(BaseModel):
+    period_start: date
+    period_end: date
+    actual_gmv: Decimal | None = None
+    target_gmv: Decimal | None = None
+    actual_roi: Decimal | None = None
+    actual_conversion_rate: Decimal | None = None
+
+
+class ProductTrendRead(BaseModel):
+    product_id: int
+    product_name: str
+    store_id: int
+    store_name: str
+    points: list[TrendPoint]
+
+
+class TrendsRead(BaseModel):
+    period_start: date | None
+    period_end: date | None
+    stores: list[StoreRead]
+    series: list[ProductTrendRead]
 
 
 class StockWarning(BaseModel):
