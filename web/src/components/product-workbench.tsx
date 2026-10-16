@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { catalogRequest, type Competitor, type Movement, type Product, type ProductList, type Sku, type Store } from "@/lib/catalog";
 import { ContentWorkbench } from "@/components/content-workbench";
 import { MediaWorkbench } from "@/components/media-workbench";
+import { CampaignWorkbench } from "@/components/campaign-workbench";
 
 export function ProductWorkbench({ productId, workspaceId }: { productId: number; workspaceId: number }) {
   const router = useRouter();
@@ -105,6 +106,7 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
       </section>
       <ContentWorkbench productId={productId} workspaceId={workspaceId} />
       <MediaWorkbench productId={productId} workspaceId={workspaceId} />
+      <CampaignWorkbench productId={productId} workspaceId={workspaceId} />
       <section className="panel"><div className="section-heading"><div><p className="eyebrow">NEXT STEPS</p><h2>后续环节</h2></div></div><div className="future-grid"><span>投放建议与经营复盘 · 后续阶段</span></div></section>
     </>
   );

@@ -324,6 +324,52 @@ class MediaAsset(Base):
     )
 
 
+class AdProposal(Base):
+    """投放实验建议；只保存人工可审核的方案，不调用外部广告平台。"""
+
+    __tablename__ = "ad_proposals"
+    __table_args__ = (
+        Index("ix_ad_proposals_product_created", "product_id", "created_at"),
+        CheckConstraint("risk_level IN ('normal', 'high')", name="ck_ad_proposal_risk"),
+        CheckConstraint(
+            "status IN ('draft', 'pending', 'approved', 'rejected')", name="ck_ad_proposal_status"
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    content: Mapped[dict] = mapped_column(JSON)
+    risk_level: Mapped[str] = mapped_column(String(20), default="normal")
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    submitted_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdProposalDecision(Base):
+    """投放建议每次人工处理的不可覆盖记录。"""
+
+    __tablename__ = "ad_proposal_decisions"
+    __table_args__ = (Index("ix_ad_decisions_proposal_created", "proposal_id", "created_at"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(
+        ForeignKey("ad_proposals.id", ondelete="CASCADE"), index=True
+    )
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    actor_role: Mapped[str] = mapped_column(String(20))
+    result: Mapped[str] = mapped_column(String(20))
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    previous_risk_level: Mapped[str] = mapped_column(String(20))
+    risk_level: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Product(Base):
     """商品档案始终经所属店铺确定工作空间。"""
 
