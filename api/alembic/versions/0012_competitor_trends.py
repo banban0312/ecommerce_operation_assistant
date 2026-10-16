@@ -19,7 +19,13 @@ def upgrade() -> None:
         "competitors", sa.Column("source_fetched_at", sa.DateTime(timezone=True), nullable=True)
     )
     op.add_column(
-        "competitors", sa.Column("source_snapshot", sa.JSON(), nullable=False, server_default="{}")
+        "competitors",
+        sa.Column(
+            "source_snapshot",
+            sa.JSON(),
+            nullable=False,
+            server_default=sa.text("('{}')"),
+        ),
     )
 
 
