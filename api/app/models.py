@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -236,6 +237,86 @@ class ContentVersion(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     source: Mapped[str] = mapped_column(String(20), default="model")
     content: Mapped[dict] = mapped_column(JSON)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class GenerationJob(Base):
+    """媒体生成任务；状态变化和幂等键用于 Worker 重试与恢复。"""
+
+    __tablename__ = "generation_jobs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "idempotency_key", name="uq_generation_job_idempotency"),
+        Index("ix_generation_jobs_workspace_created", "workspace_id", "created_at"),
+        CheckConstraint("media_type IN ('image', 'video')", name="ck_generation_job_media_type"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'failed', 'timeout', 'cancelled')",
+            name="ck_generation_job_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    content_version_id: Mapped[int] = mapped_column(ForeignKey("content_versions.id"))
+    media_type: Mapped[str] = mapped_column(String(20))
+    idempotency_key: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    provider: Mapped[str] = mapped_column(String(40), default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    error_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GenerationEvent(Base):
+    """任务时间线；每次状态变化追加事件，不覆盖历史。"""
+
+    __tablename__ = "generation_events"
+    __table_args__ = (Index("ix_generation_events_job_created", "job_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("generation_jobs.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(20))
+    message: Mapped[str] = mapped_column(String(500))
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MediaAsset(Base):
+    """生成产物与商品、任务和创意版本关联，支持审核、标签和归档。"""
+
+    __tablename__ = "media_assets"
+    __table_args__ = (
+        Index("ix_media_assets_product_created", "product_id", "created_at"),
+        CheckConstraint("media_type IN ('image', 'video')", name="ck_media_asset_media_type"),
+        CheckConstraint("status IN ('available', 'archived')", name="ck_media_asset_status"),
+        CheckConstraint(
+            "review_status IN ('pending', 'approved', 'rejected')", name="ck_media_asset_review"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("generation_jobs.id"))
+    content_version_id: Mapped[int] = mapped_column(ForeignKey("content_versions.id"))
+    media_type: Mapped[str] = mapped_column(String(20))
+    storage_path: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), default="available")
+    review_status: Mapped[str] = mapped_column(String(20), default="pending")
+    tags: Mapped[list] = mapped_column(JSON, default=list)
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
