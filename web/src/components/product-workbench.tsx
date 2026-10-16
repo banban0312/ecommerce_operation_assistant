@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { catalogRequest, type Competitor, type Movement, type Product, type ProductList, type Sku, type Store } from "@/lib/catalog";
+import { ContentWorkbench } from "@/components/content-workbench";
 
 export function ProductWorkbench({ productId, workspaceId }: { productId: number; workspaceId: number }) {
   const router = useRouter();
@@ -82,7 +83,7 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
       <div className="page-heading"><div><p className="eyebrow">PRODUCT WORKSPACE</p><h1>{product.name}</h1><p>{store?.name ?? "店铺"} · {store?.platform ?? "平台"} · {product.category || "未分类"}</p></div><Link className="button secondary" href="/products">返回商品工作台</Link></div>
       {error && <p className="notice error" role="alert">{error}</p>}
       <div className="context-bar"><label>当前商品 <select value={productId} onChange={(event) => router.push(`/products/${event.target.value}`)}>{allProducts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>商品 ID：{product.id}</span><span>SKU：{skus.length}</span><span>竞品：{competitors.length}</span></div>
-      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><span>智能诊断 · 待开放</span><span>创意素材 · 待开放</span><span>投放复盘 · 待开放</span></nav>
+      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><a href="#ai-content">智能诊断与创意</a><span>投放复盘 · 待开放</span></nav>
 
       <section className="panel" id="profile">
         <div className="section-heading"><div><p className="eyebrow">PRODUCT PROFILE</p><h2>商品档案</h2></div><button className="button secondary" onClick={() => setEditProduct(!editProduct)}>编辑档案</button></div>
@@ -101,7 +102,8 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
         <form className="inline-form" onSubmit={(event) => submit(event, `products/${productId}/competitors`, "POST")}><label>竞品名称<input name="name" required maxLength={200} /></label><label>价格（元）<input name="price" type="number" min="0" step="0.01" required /></label><label>关键参数（每行 参数: 值）<textarea name="attributes" placeholder={"面料: 锦纶\n防晒指数: UPF50+"} /></label><label>公开链接（可选）<input name="source_url" type="url" maxLength={1000} /></label><button className="button primary" disabled={busy}>保存竞品</button></form>
         {competitors.length ? <div className="competitor-grid">{competitors.map((item) => <article className="competitor-card" key={item.id}><div className="sku-head"><h3>{item.name}</h3><strong>¥{item.price}</strong></div><dl>{Object.entries(item.attributes).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>{item.source_url && <a href={item.source_url} target="_blank" rel="noreferrer">查看来源 ↗</a>}<button className="button secondary" disabled={busy} onClick={() => removeCompetitor(item.id)}>删除</button></article>)}</div> : <p className="subtle">暂无竞品资料。</p>}
       </section>
-      <section className="panel"><div className="section-heading"><div><p className="eyebrow">NEXT STEPS</p><h2>后续环节</h2></div></div><div className="future-grid"><span>智能诊断 · 待开放</span><span>主图创意与视频脚本 · 待开放</span><span>投放建议与经营复盘 · 待开放</span></div></section>
+      <ContentWorkbench productId={productId} workspaceId={workspaceId} />
+      <section className="panel"><div className="section-heading"><div><p className="eyebrow">NEXT STEPS</p><h2>后续环节</h2></div></div><div className="future-grid"><span>图片/视频异步任务 · M5</span><span>投放建议与经营复盘 · 后续阶段</span></div></section>
     </>
   );
 }

@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from app.api.routes import auth, catalog, health, settings
+from app.api.routes import auth, catalog, content, health, settings
 from app.core.config import get_settings
 from app.db.session import get_engine
 from app.observability import configure_logging
@@ -31,6 +31,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(catalog.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
+app.include_router(content.router, prefix="/api/v1")
 
 
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
@@ -78,11 +79,15 @@ async def http_error(request: Request, exc: HTTPException):
     # 将框架 HTTP 异常转换为统一的对外错误格式。
     codes = {401: "AUTH_401", 403: "AUTH_403", 404: "BIZ_404", 409: "BIZ_409"}
     messages = {401: "请先登录", 403: "无操作权限", 404: "资源不存在", 409: "状态冲突"}
+    # 业务校验和外部服务失败使用路由定义的安全提示，便于前端指导下一步；认证错误仍统一隐藏细节。
+    safe_detail = (
+        exc.detail if exc.status_code in {422, 502, 503} and isinstance(exc.detail, str) else None
+    )
     return error_response(
         request,
         exc.status_code,
         codes.get(exc.status_code, "SYS_HTTP"),
-        messages.get(exc.status_code, "请求未完成"),
+        safe_detail or messages.get(exc.status_code, "请求未完成"),
     )
 
 
