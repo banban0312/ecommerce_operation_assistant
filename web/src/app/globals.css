@@ -6,7 +6,7 @@ a { color:inherit; text-decoration:none; }
 button { font:inherit; cursor:pointer; }
 button:disabled { cursor:not-allowed; }
 a:focus-visible,button:focus-visible { outline:3px solid #2ab4a2; outline-offset:4px; }
-/* 页面采用固定侧栏和弹性内容区的工作台结构。 */
+/* 页面采用原型中的横向顶栏，工作内容占满可用宽度。 */
 .app-shell { display:flex; min-height:100vh; }
 .sidebar { width:240px; flex-shrink:0; background:#fff; border-right:1px solid var(--border); display:flex; flex-direction:column; padding:32px 18px 20px; }
 .brand { display:flex; gap:11px; align-items:center; font-size:17px; font-weight:700; padding:0 8px 38px; }
@@ -21,6 +21,11 @@ a:focus-visible,button:focus-visible { outline:3px solid #2ab4a2; outline-offset
 .sidebar-footer { margin-top:auto; display:flex; gap:8px; align-items:center; padding:32px 14px 0; color:var(--muted); font-size:11px; }
 .workspace { flex:1; min-width:0; }
 .topbar { background:#fff; border-bottom:1px solid var(--border); height:74px; padding:0 40px; display:flex; align-items:center; justify-content:space-between; }
+.topbar .brand { padding:0; flex-shrink:0; }
+.primary-nav { display:flex; align-items:center; gap:4px; min-width:0; }
+.primary-nav .nav-item { width:auto; margin:0; padding:12px 14px; white-space:nowrap; justify-content:center; font-size:12px; }
+.primary-nav .nav-item.active { background:transparent; border-bottom:2px solid var(--accent); border-radius:0; }
+.topbar .account-menu { flex-shrink:0; }
 .breadcrumb { color:var(--muted); font-size:12px; }
 .breadcrumb span { margin:0 14px; color:#c1cbd0; }
 .breadcrumb strong { font-weight:500; color:var(--ink); }
@@ -79,5 +84,84 @@ h2 { font-size:16px; font-weight:600; margin:0; }
 .empty-state h3 { margin:16px 0 9px; font-size:14px; font-weight:500; }
 .empty-state p { font-size:11px; color:var(--muted); line-height:1.8; margin:0 0 19px; }
 .page-footer { display:flex; justify-content:space-between; color:#9ba9b0; font-size:10px; padding:2px 0; }
-@media(max-width:1100px) { .sidebar{width:210px;padding-inline:12px;} main{padding:28px 24px;} .topbar{padding:0 24px;} .service-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .welcome-art{margin:0;} }
-@media(max-width:720px) { .sidebar{display:none;} main{padding:22px 16px;} .topbar{padding:0 16px;height:60px;} .page-heading{align-items:flex-start;flex-direction:column;} .welcome-panel{padding:24px;} .welcome-art{display:none;} .welcome-panel h2{font-size:19px;} .panel{padding:22px 18px;} .service-grid{gap:10px;} .service-card{padding:14px;} .page-footer{gap:15px;} }
+@media(max-width:1100px) { main{padding:28px 24px;} .topbar{padding:12px 24px;height:auto;flex-wrap:wrap;gap:8px;} .primary-nav{order:3;width:100%;overflow-x:auto;} .service-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .welcome-art{margin:0;} }
+@media(max-width:720px) { main{padding:22px 16px;} .topbar{padding:10px 16px;} .topbar .brand{font-size:14px;} .topbar .brand small,.environment-tag{display:none;} .primary-nav .nav-item{padding:10px;} .page-heading{align-items:flex-start;flex-direction:column;} .welcome-panel{padding:24px;} .welcome-art{display:none;} .welcome-panel h2{font-size:19px;} .panel{padding:22px 18px;} .service-grid{gap:10px;} .service-card{padding:14px;} .page-footer{gap:15px;} }
+
+/* M2 店铺、商品与库存工作台：卡片和表格在桌面端并排，窄屏自动换行。 */
+.metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin-bottom:24px; }
+.metric-card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:22px; display:grid; gap:11px; }
+.metric-card>span,.metric-card small { color:var(--muted); font-size:11px; }
+.metric-card strong { font-size:29px; line-height:1; }
+.metric-card.warning strong,.warn-text { color:#ba6a2b; }
+.metric-card .metric-text { font-size:24px; color:var(--accent); }
+.section-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.store-list,.filter-row,.context-bar,.section-nav { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.store-chip { border:1px solid var(--border); border-radius:8px; background:#fff; padding:12px 16px; text-align:left; min-width:145px; color:var(--ink); }
+.store-chip small { display:block; color:var(--muted); margin-top:5px; }
+.store-chip.selected { border-color:var(--accent); background:#eaf5f1; }
+.store-choice { display:block; border:0; padding:0; background:transparent; text-align:left; color:var(--ink); font-weight:600; }
+.store-choice:hover { color:var(--accent); }
+.store-chip .text-action { display:block; margin-top:9px; font-size:11px; }
+.subtle { color:var(--muted); font-size:12px; line-height:1.8; margin:10px 0; }
+.notice { padding:12px 16px; border-radius:6px; margin:0 0 18px; }
+.notice.error { color:#a43f37; background:#fff0ed; border:1px solid #f3d2ca; }
+.inline-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; padding:18px; background:#f7faf9; border:1px solid var(--border); border-radius:8px; margin-bottom:20px; align-items:end; }
+.inline-form label,.mini-form label { display:grid; gap:7px; font-size:11px; font-weight:600; color:#536873; }
+.inline-form input,.inline-form select,.inline-form textarea,.mini-form input,.filter-row input,.filter-row select,.context-bar select { width:100%; padding:10px 11px; border:1px solid #d8e3e2; border-radius:6px; color:var(--ink); background:#fff; font:inherit; min-height:38px; }
+.inline-form textarea { min-height:40px; resize:vertical; }
+.inline-form input:focus,.inline-form select:focus,.inline-form textarea:focus,.mini-form input:focus,.filter-row input:focus,.filter-row select:focus,.context-bar select:focus { outline:2px solid #2ab4a244; border-color:var(--accent); }
+.filter-row { margin-bottom:18px; }
+.filter-row input { width:min(100%,300px); }
+.filter-row select { width:min(100%,220px); }
+.list-table { display:grid; overflow-x:auto; }
+.table-head,.table-row { display:grid; grid-template-columns:minmax(160px,2fr) repeat(3,minmax(90px,1fr)); gap:16px; align-items:center; min-width:520px; padding:13px 10px; border-bottom:1px solid var(--border); }
+.table-head { color:var(--muted); font-size:10px; font-weight:600; background:#f8faf9; }
+.table-row { font-size:12px; }
+.table-row small { display:block; margin-top:5px; color:var(--muted); font-weight:400; }
+.table-row a,.competitor-card a { color:var(--accent); font-weight:600; }
+.pager,.pager>div { display:flex; align-items:center; gap:10px; }
+.pager { justify-content:space-between; padding-top:18px; color:var(--muted); font-size:11px; }
+.context-bar { padding:15px 18px; background:#eaf5f1; border-radius:8px; margin-bottom:15px; color:#477267; font-size:11px; }
+.context-bar label { display:flex; gap:10px; align-items:center; font-weight:600; }
+.context-bar select { width:min(320px,60vw); }
+.section-nav { margin-bottom:22px; padding:12px; border:1px solid var(--border); background:#fff; border-radius:8px; }
+.section-nav a,.section-nav span { padding:9px 11px; border-radius:6px; font-size:11px; }
+.section-nav a { color:var(--accent); background:#eaf5f1; }
+.section-nav span { color:#9ca9ab; }
+.profile-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.profile-grid>div { display:grid; gap:8px; }
+.profile-grid small { color:var(--muted); }
+.profile-grid p { margin:0; line-height:1.6; }
+.sku-grid,.competitor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+.sku-card,.competitor-card { border:1px solid var(--border); border-radius:8px; padding:17px; min-width:0; }
+.sku-head,.sku-numbers { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.sku-head span,.sku-card>small { color:var(--muted); font-size:11px; }
+.sku-head .warn-text { color:#ba6a2b; }
+.sku-numbers { padding:18px 0; font-size:12px; }
+.mini-form { display:grid; gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
+.subheading { font-size:13px; margin:28px 0 14px; }
+.competitor-card h3 { font-size:14px; margin:0; }
+.competitor-card dl { display:grid; gap:7px; margin:16px 0; }
+.competitor-card dl>div { display:flex; justify-content:space-between; gap:10px; font-size:11px; }
+.competitor-card dt { color:var(--muted); }
+.competitor-card dd { margin:0; text-align:right; }
+.competitor-card>a { display:block; margin:10px 0; }
+.future-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.future-grid span { border:1px dashed #d5e3df; border-radius:7px; padding:20px; color:var(--muted); text-align:center; }
+/* 商品工作台总览沿用原型的主商品池、筛选标签和右侧关注区。 */
+.hub-layout { display:grid; grid-template-columns:minmax(0,1fr) 245px; gap:18px; align-items:start; }
+.hub-main { min-width:0; }
+.hub-rail { display:grid; gap:18px; }
+.hub-rail .panel { padding:19px; }
+.hub-rail h2 { font-size:14px; margin:0 0 12px; }
+.hub-tabs { display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--border); margin-bottom:18px; }
+.hub-tabs button { border:0; background:transparent; color:var(--muted); padding:11px 13px; cursor:pointer; font:inherit; font-size:12px; }
+.hub-tabs button.selected { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:700; }
+.hub-main .filter-row { display:grid; grid-template-columns:minmax(170px,1.4fr) repeat(3,minmax(105px,1fr)); }
+.hub-main .filter-row input,.hub-main .filter-row select { width:100%; min-width:0; }
+.hub-table .table-head,.hub-table .table-row { grid-template-columns:minmax(180px,2fr) minmax(125px,1.3fr) 55px minmax(95px,1fr) minmax(85px,1fr) minmax(95px,1fr); min-width:730px; }
+.text-action { border:0; background:transparent; color:var(--accent); padding:0; cursor:pointer; font:inherit; font-size:12px; font-weight:600; }
+@media(max-width:1100px) { .hub-layout { grid-template-columns:1fr; } .hub-rail { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:720px) { .hub-rail { grid-template-columns:1fr; } .hub-main .filter-row { grid-template-columns:1fr 1fr; } }
+@media(max-width:1100px) { .metric-grid{grid-template-columns:repeat(2,1fr);} .profile-grid{grid-template-columns:repeat(2,1fr);} }
+@media(max-width:720px) { .metric-grid,.profile-grid,.future-grid{grid-template-columns:1fr;} .pager{align-items:flex-start;flex-direction:column;} .context-bar{align-items:flex-start;flex-direction:column;} }
