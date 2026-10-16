@@ -8,7 +8,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from app.api.routes import auth, campaign, catalog, content, health, imports, media, review, settings
+from app.api.routes import (
+    auth,
+    campaign,
+    catalog,
+    content,
+    health,
+    imports,
+    media,
+    review,
+    settings,
+)
 from app.core.config import get_settings
 from app.db.session import get_engine
 from app.observability import configure_logging
