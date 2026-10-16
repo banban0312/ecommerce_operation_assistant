@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
+from time import monotonic
 
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models import ContentVersion, GenerationEvent, GenerationJob, MediaAsset
+from app.models import ContentVersion, GenerationEvent, GenerationJob, MediaAsset, TaskRule
 from app.services.media_provider import generate_media
 from app.worker.celery_app import celery_app
 
@@ -36,7 +37,13 @@ def run_generation_job(job_id: int) -> dict:
         db.add(GenerationEvent(job_id=job.id, status="running", message="Worker 开始执行"))
         db.commit()
         content = db.get(ContentVersion, job.content_version_id)
+        started_monotonic = monotonic()
         result = generate_media(job.media_type, job.id, content.content if content else {})
+        rule = db.scalar(select(TaskRule).where(TaskRule.workspace_id == job.workspace_id))
+        if rule and monotonic() - started_monotonic > rule.timeout_seconds:
+            result = result.__class__(
+                False, error_code="timeout", error_message="任务超过配置的超时时间"
+            )
         if result.success and not job.cancel_requested:
             existing = db.scalar(select(MediaAsset).where(MediaAsset.job_id == job.id))
             if existing is None:

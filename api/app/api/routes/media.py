@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import SessionDep, get_workspace_access, require_high_risk_approval
 from app.models import (
@@ -93,7 +94,19 @@ def create_job(product_id: int, payload: JobCreate, db: SessionDep, access: Acce
         created_by=access.user.id,
     )
     db.add(job)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = db.scalar(
+            select(GenerationJob).where(
+                GenerationJob.workspace_id == access.workspace.id,
+                GenerationJob.idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing:
+            return _read(db, existing)
+        raise HTTPException(409, "任务幂等键冲突") from exc
     db.add(GenerationEvent(job_id=job.id, status="pending", message="任务已排队"))
     record_audit_event(
         db,
