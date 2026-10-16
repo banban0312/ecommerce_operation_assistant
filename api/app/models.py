@@ -530,6 +530,11 @@ class Competitor(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_status: Mapped[str] = mapped_column(String(24), default="manual")
+    source_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

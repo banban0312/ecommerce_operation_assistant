@@ -1,15 +1,19 @@
 """店铺、商品、SKU、库存和竞品接口；所有资源都先校验工作空间归属。"""
 
+from datetime import UTC, date, datetime
 from typing import Annotated
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import SessionDep, get_workspace_access
-from app.models import Competitor, InventoryMovement, Product, ProductSku, Store
+from app.models import BusinessMetric, Competitor, InventoryMovement, Product, ProductSku, Store
 from app.schemas.catalog import (
     CompetitorCreate,
+    CompetitorParse,
+    CompetitorParseRead,
     CompetitorRead,
     CompetitorUpdate,
     DashboardSummary,
@@ -19,6 +23,7 @@ from app.schemas.catalog import (
     ProductList,
     ProductListItem,
     ProductRead,
+    ProductTrendRead,
     ProductUpdate,
     SkuCreate,
     SkuRead,
@@ -27,6 +32,8 @@ from app.schemas.catalog import (
     StoreCreate,
     StoreRead,
     StoreUpdate,
+    TrendPoint,
+    TrendsRead,
 )
 from app.services.audit import record_audit_event
 from app.services.workspaces import WorkspaceAccess
@@ -461,6 +468,37 @@ def list_competitors(product_id: int, db: SessionDep, access: Access) -> list[Co
     )
 
 
+@router.post("/products/{product_id}/competitors/parse", response_model=CompetitorParseRead)
+def parse_competitor_link(
+    product_id: int, payload: CompetitorParse, db: SessionDep, access: Access
+):
+    """解析受支持公开链接中的显式参数；不抓取登录页，失败时保留原链接供人工补录。"""
+    _product(db, access, product_id)
+    parsed = urlparse(payload.source_url.strip())
+    supported_hosts = {
+        "item.taobao.com",
+        "detail.tmall.com",
+        "item.jd.com",
+        "haohuo.jinritemai.com",
+    }
+    supported = parsed.scheme in {"http", "https"} and parsed.hostname in supported_hosts
+    query = parse_qs(parsed.query)
+    fields = {
+        "name": query.get("name", [None])[0],
+        "price": query.get("price", [None])[0],
+        "category": query.get("category", [None])[0],
+    }
+    complete = supported and bool(fields["name"] and fields["price"])
+    return CompetitorParseRead(
+        source_url=payload.source_url,
+        supported=supported,
+        status="parsed" if complete else "manual_required",
+        message="已读取链接中的公开参数" if complete else "链接可保留，请补录名称和价格",
+        fields=fields,
+        fetched_at=datetime.now(UTC) if complete else None,
+    )
+
+
 @router.post(
     "/products/{product_id}/competitors",
     response_model=CompetitorRead,
@@ -480,6 +518,8 @@ def create_competitor(
         price=payload.price,
         attributes=payload.attributes,
         source_url=payload.source_url,
+        source_status="manual" if not payload.source_url else "manual_required",
+        source_snapshot={},
     )
     db.add(competitor)
     _commit(db)
@@ -578,4 +618,70 @@ def dashboard(db: SessionDep, access: Access) -> DashboardSummary:
         product_count=product_count,
         warning_count=len(warnings),
         warnings=warnings[:20],
+    )
+
+
+@router.get("/trends", response_model=TrendsRead)
+def trends(
+    db: SessionDep,
+    access: Access,
+    store_id: int | None = None,
+    product_id: int | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> TrendsRead:
+    """按当前工作区返回实际存在的经营周期；缺失周期不填充为零。"""
+    conditions = [Store.workspace_id == access.workspace.id, Store.status == "active"]
+    if store_id is not None:
+        _store(db, access, store_id)
+        conditions.append(Store.id == store_id)
+    if product_id is not None:
+        _product(db, access, product_id)
+        conditions.append(Product.id == product_id)
+    if period_start is not None:
+        conditions.append(BusinessMetric.period_end >= period_start)
+    if period_end is not None:
+        conditions.append(BusinessMetric.period_start <= period_end)
+    stores = list(
+        db.scalars(
+            select(Store).where(*conditions[:2] + ([Store.id == store_id] if store_id else []))
+        )
+    )
+    rows = db.execute(
+        select(BusinessMetric, Product, Store)
+        .join(Product, BusinessMetric.product_id == Product.id)
+        .join(Store, Product.store_id == Store.id)
+        .where(*conditions)
+        .order_by(Product.id, BusinessMetric.period_start)
+    ).all()
+    grouped: dict[int, ProductTrendRead] = {}
+    for metric, product, store in rows:
+        series = grouped.setdefault(
+            product.id,
+            ProductTrendRead(
+                product_id=product.id,
+                product_name=product.name,
+                store_id=store.id,
+                store_name=store.name,
+                points=[],
+            ),
+        )
+        series.points.append(
+            TrendPoint(
+                period_start=metric.period_start,
+                period_end=metric.period_end,
+                actual_gmv=metric.actual_gmv,
+                target_gmv=metric.target_gmv,
+                actual_roi=metric.actual_roi,
+                actual_conversion_rate=metric.actual_conversion_rate,
+            )
+        )
+    return TrendsRead(
+        period_start=period_start,
+        period_end=period_end,
+        stores=[
+            StoreRead.model_validate(store).model_copy(update={"product_count": 0})
+            for store in stores
+        ],
+        series=list(grouped.values()),
     )
