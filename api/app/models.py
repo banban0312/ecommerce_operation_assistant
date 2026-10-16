@@ -202,6 +202,47 @@ class PlatformAccountPlaceholder(Base):
     )
 
 
+class ContentVersion(Base):
+    """诊断、主图创意和视频脚本的可编辑版本；确认版本不会被重新生成覆盖。"""
+
+    __tablename__ = "content_versions"
+    __table_args__ = (
+        Index("ix_content_versions_product_type", "product_id", "content_type", "slot_key"),
+        UniqueConstraint(
+            "product_id",
+            "content_type",
+            "slot_key",
+            "version_no",
+            name="uq_content_version_slot",
+        ),
+        CheckConstraint(
+            "content_type IN ('diagnosis', 'image_idea', 'video_script')",
+            name="ck_content_version_type",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'confirmed', 'archived')",
+            name="ck_content_version_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    content_type: Mapped[str] = mapped_column(String(30))
+    slot_key: Mapped[str] = mapped_column(String(40), default="default")
+    version_no: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    source: Mapped[str] = mapped_column(String(20), default="model")
+    content: Mapped[dict] = mapped_column(JSON)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Product(Base):
     """商品档案始终经所属店铺确定工作空间。"""
 
