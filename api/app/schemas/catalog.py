@@ -190,6 +190,14 @@ class TrendsRead(BaseModel):
     series: list[ProductTrendRead]
 
 
+class DemoSeedRead(BaseModel):
+    demo_key: str
+    product_id: int
+    store_id: int
+    created: bool
+    label: str
+
+
 class StockWarning(BaseModel):
     store_id: int
     product_id: int

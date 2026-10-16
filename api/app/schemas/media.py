@@ -44,6 +44,12 @@ class AssetRead(BaseModel):
     updated_at: datetime
 
 
+class AssetCompareRead(BaseModel):
+    product_id: int
+    assets: list[AssetRead]
+    differences: dict[str, list[str]]
+
+
 class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

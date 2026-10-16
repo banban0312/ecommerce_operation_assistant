@@ -1,6 +1,7 @@
 """店铺、商品、SKU、库存和竞品接口；所有资源都先校验工作空间归属。"""
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Annotated
 from urllib.parse import parse_qs, urlparse
 
@@ -8,8 +9,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.dependencies import SessionDep, get_workspace_access
-from app.models import BusinessMetric, Competitor, InventoryMovement, Product, ProductSku, Store
+from app.api.dependencies import SessionDep, get_workspace_access, require_roles
+from app.models import (
+    AdProposal,
+    BusinessMetric,
+    Competitor,
+    ContentVersion,
+    InventoryMovement,
+    Product,
+    ProductSku,
+    ReviewReport,
+    Store,
+    WorkspaceRole,
+)
 from app.schemas.catalog import (
     CompetitorCreate,
     CompetitorParse,
@@ -17,6 +29,7 @@ from app.schemas.catalog import (
     CompetitorRead,
     CompetitorUpdate,
     DashboardSummary,
+    DemoSeedRead,
     InventoryAdjust,
     InventoryMovementRead,
     ProductCreate,
@@ -717,4 +730,145 @@ def trends(
             for store in stores
         ],
         series=list(grouped.values()),
+    )
+
+
+@router.post("/demo/wireless-charger", response_model=DemoSeedRead, status_code=201)
+def seed_wireless_charger_demo(
+    db: SessionDep,
+    access: Annotated[
+        WorkspaceAccess, Depends(require_roles(WorkspaceRole.SUPERVISOR, WorkspaceRole.ADMIN))
+    ],
+):
+    """创建可重复执行的无线充防守演示数据，所有文本明确标注为模拟数据。"""
+    demo_key = "demo-wireless-charger-v1"
+    store = db.scalar(
+        select(Store).where(Store.workspace_id == access.workspace.id, Store.name == "无线充演示店")
+    )
+    product = None
+    if store:
+        product = db.scalar(
+            select(Product).where(
+                Product.store_id == store.id, Product.name == "无线充热销款（模拟演示）"
+            )
+        )
+    if product:
+        return DemoSeedRead(
+            demo_key=demo_key,
+            product_id=product.id,
+            store_id=store.id,
+            created=False,
+            label="模拟/演示数据",
+        )
+    store = store or Store(workspace_id=access.workspace.id, name="无线充演示店", platform="淘宝")
+    db.add(store)
+    db.flush()
+    product = Product(
+        store_id=store.id,
+        name="无线充热销款（模拟演示）",
+        category="3C 数码",
+        description="[模拟演示数据] 低价竞品冲击下的无线充热销款防守场景",
+        target_audience="[模拟演示数据] 通勤办公人群",
+        selling_points="[模拟演示数据] 15W 快充、折叠便携",
+    )
+    db.add(product)
+    db.flush()
+    db.add(
+        ProductSku(
+            product_id=product.id,
+            sku_code="WLC-15W",
+            specification="黑色 15W（模拟）",
+            price=129,
+            stock=88,
+            warning_threshold=20,
+        )
+    )
+    db.add(
+        Competitor(
+            product_id=product.id,
+            name="低价无线充竞品（模拟）",
+            price=79,
+            attributes={"功率": "15W", "场景": "低价冲击"},
+            source_status="manual",
+            source_snapshot={"demo_key": demo_key},
+        )
+    )
+    for content_type, content in [
+        (
+            "diagnosis",
+            {"label": "模拟演示数据", "finding": "竞品价格低 38.8%，需强化快充与便携卖点"},
+        ),
+        ("image_idea", {"label": "模拟演示数据", "idea": "办公桌面折叠无线充对比创意"}),
+        ("video_script", {"label": "模拟演示数据", "script": "展示通勤收纳与 15W 快充场景"}),
+    ]:
+        db.add(
+            ContentVersion(
+                product_id=product.id,
+                content_type=content_type,
+                slot_key="demo-wireless",
+                version_no=1,
+                status="confirmed",
+                source="human",
+                content=content,
+                updated_by=access.user.id,
+            )
+        )
+    metric = BusinessMetric(
+        workspace_id=access.workspace.id,
+        product_id=product.id,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        source="demo",
+        target_gmv=Decimal("18000"),
+        actual_gmv=Decimal("15600"),
+        target_impressions=10000,
+        actual_impressions=11200,
+        target_ctr=Decimal("0.08"),
+        actual_ctr=Decimal("0.075"),
+        target_conversion_rate=Decimal("0.04"),
+        actual_conversion_rate=Decimal("0.035"),
+        target_roi=Decimal("2.5"),
+        actual_roi=Decimal("2.1"),
+        created_by=access.user.id,
+    )
+    db.add(metric)
+    db.flush()
+    db.add(
+        AdProposal(
+            workspace_id=access.workspace.id,
+            product_id=product.id,
+            content={"label": "模拟演示数据", "strategy": "守住快充与便携卖点，测试中高客单人群"},
+            risk_level="normal",
+            status="pending",
+            submitted_by=access.user.id,
+        )
+    )
+    db.add(
+        ReviewReport(
+            workspace_id=access.workspace.id,
+            product_id=product.id,
+            metric_id=metric.id,
+            content={
+                "label": "模拟演示数据",
+                "summary": "低价竞品冲击下，优先优化素材卖点和转化承接",
+            },
+            created_by=access.user.id,
+            status="draft",
+        )
+    )
+    record_audit_event(
+        db,
+        access=access,
+        action="catalog.demo_seed",
+        resource_type="product",
+        resource_id=str(product.id),
+        details={"demo_key": demo_key},
+    )
+    db.commit()
+    return DemoSeedRead(
+        demo_key=demo_key,
+        product_id=product.id,
+        store_id=store.id,
+        created=True,
+        label="模拟/演示数据",
     )
