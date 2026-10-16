@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.dependencies import SessionDep, get_workspace_access
 from app.models import (
     AdProposal,
+    AdProposalDecision,
     BusinessMetric,
     ContentVersion,
     MediaAsset,
@@ -108,11 +109,12 @@ def generate_report(product_id: int, metric_id: int, db: SessionDep, access: Acc
             )
         )
     )
-    proposals = list(
+    proposals = list(db.scalars(select(AdProposal).where(AdProposal.product_id == product_id)))
+    decisions = list(
         db.scalars(
-            select(AdProposal).where(
-                AdProposal.product_id == product_id, AdProposal.status == "approved"
-            )
+            select(AdProposalDecision)
+            .where(AdProposalDecision.workspace_id == access.workspace.id)
+            .order_by(AdProposalDecision.created_at)
         )
     )
     content = {
@@ -122,7 +124,25 @@ def generate_report(product_id: int, metric_id: int, db: SessionDep, access: Acc
         },
         "diagnosis": [row.content for row in diagnosis[:1]],
         "approved_assets": [{"id": a.id, "type": a.media_type} for a in assets],
-        "approved_campaigns": [{"id": p.id, "content": p.content} for p in proposals],
+        "campaigns": [
+            {
+                "id": p.id,
+                "status": p.status,
+                "risk_level": p.risk_level,
+                "content": p.content,
+                "decisions": [
+                    {
+                        "result": d.result,
+                        "role": d.actor_role,
+                        "note": d.note,
+                        "created_at": d.created_at.isoformat(),
+                    }
+                    for d in decisions
+                    if d.proposal_id == p.id
+                ],
+            }
+            for p in proposals
+        ],
         "comparison": {
             "gmv_delta": str(metric.actual_gmv - metric.target_gmv),
             "ctr_delta": str(metric.actual_ctr - metric.target_ctr),
