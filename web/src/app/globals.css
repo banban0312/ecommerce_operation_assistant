@@ -161,6 +161,43 @@ h2 { font-size:16px; font-weight:600; margin:0; }
 .hub-main .filter-row input,.hub-main .filter-row select { width:100%; min-width:0; }
 .hub-table .table-head,.hub-table .table-row { grid-template-columns:minmax(180px,2fr) minmax(125px,1.3fr) 55px minmax(95px,1fr) minmax(85px,1fr) minmax(95px,1fr); min-width:730px; }
 .text-action { border:0; background:transparent; color:var(--accent); padding:0; cursor:pointer; font:inherit; font-size:12px; font-weight:600; }
+.import-steps { display:flex; align-items:center; gap:18px; padding:18px 24px; margin-bottom:24px; }
+.import-steps>i { color:#b2c2c0; font-style:normal; font-size:20px; }
+.import-step { display:flex; align-items:center; gap:11px; flex:1; min-width:0; }
+.import-step>span { display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#eef3f1; color:#8a9c9a; font-weight:700; }
+.import-step.active>span { background:var(--accent); color:#fff; }
+.import-step strong,.import-step small { display:block; }
+.import-step strong { font-size:12px; }
+.import-step small { margin-top:4px; color:var(--muted); font-size:10px; }
+.import-metrics { margin-bottom:24px; }
+.import-layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; gap:18px; align-items:start; }
+.import-main { min-width:0; }
+.import-rail { display:grid; gap:18px; }
+.import-rail .panel { margin:0; padding:20px; }
+.import-type-select { min-width:145px; padding:9px 10px; border:1px solid #d8e3e2; border-radius:6px; color:var(--ink); background:#fff; font:inherit; }
+.import-empty { min-height:310px; display:grid; place-items:center; align-content:center; text-align:center; border:1px dashed #cbded9; border-radius:8px; background:#fbfdfc; padding:35px 20px; }
+.import-empty .empty-icon { background:#eaf5f1; color:var(--accent); }
+.import-empty h3 { margin:15px 0 7px; font-size:15px; font-weight:600; }
+.import-empty p { max-width:380px; margin:0 0 18px; color:var(--muted); font-size:11px; line-height:1.8; }
+.import-batch-summary,.import-confirm { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 15px; background:#f7faf9; border:1px solid var(--border); border-radius:7px; }
+.import-batch-summary { margin-bottom:14px; }
+.import-batch-summary span:first-child { display:block; color:var(--muted); font-size:10px; margin-bottom:4px; }
+.import-batch-summary strong { font-size:12px; }
+.import-table .table-head,.import-table .table-row { grid-template-columns:72px 88px minmax(220px,2fr) minmax(150px,1fr); min-width:620px; }
+.import-table code { color:#50646a; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.import-valid { color:#2d8b5c; }
+.import-invalid { color:#b13e35; }
+.import-confirm { margin-top:16px; color:var(--muted); font-size:11px; }
+.import-tips { display:grid; gap:12px; padding-left:18px; margin:16px 0 0; color:var(--muted); font-size:11px; line-height:1.6; }
+.import-history { display:grid; margin-top:15px; }
+.import-history-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; border-bottom:1px solid var(--border); background:transparent; padding:12px 0; text-align:left; }
+.import-history-item:last-child { border-bottom:0; }
+.import-history-item strong,.import-history-item small { display:block; }
+.import-history-item strong { color:var(--accent); font-size:11px; }
+.import-history-item small { margin-top:4px; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.import-history-item em { color:var(--muted); font-size:10px; font-style:normal; white-space:nowrap; }
+@media(max-width:1100px) { .import-layout { grid-template-columns:1fr; } .import-rail { grid-template-columns:1fr 1fr; } }
+@media(max-width:720px) { .import-steps { align-items:flex-start; flex-direction:column; gap:10px; } .import-steps>i { display:none; } .import-step { width:100%; } .import-rail { grid-template-columns:1fr; } .import-confirm { align-items:flex-start; flex-direction:column; } }
 @media(max-width:1100px) { .hub-layout { grid-template-columns:1fr; } .hub-rail { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:720px) { .hub-rail { grid-template-columns:1fr; } .hub-main .filter-row { grid-template-columns:1fr 1fr; } }
 
