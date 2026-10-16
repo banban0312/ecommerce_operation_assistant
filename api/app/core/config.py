@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     video_provider: str = ""
     video_api_key: SecretStr = SecretStr("")
     video_model: str = ""
+    video_api_url: str = ""
+    media_request_timeout_seconds: int = Field(default=60, ge=5, le=600)
 
     @property
     def database_url(self) -> URL:
