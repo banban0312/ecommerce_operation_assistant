@@ -512,14 +512,39 @@ def create_competitor(
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="竞品名称不能为空")
+    source_status = "manual"
+    source_fetched_at = None
+    source_snapshot: dict = {}
+    if payload.source_url:
+        parsed = urlparse(payload.source_url.strip())
+        supported_hosts = {
+            "item.taobao.com",
+            "detail.tmall.com",
+            "item.jd.com",
+            "haohuo.jinritemai.com",
+        }
+        query = parse_qs(parsed.query)
+        complete = (
+            parsed.scheme in {"http", "https"}
+            and parsed.hostname in supported_hosts
+            and bool(query.get("name", [None])[0] and query.get("price", [None])[0])
+        )
+        source_status = "parsed" if complete else "manual_required"
+        source_fetched_at = datetime.now(UTC) if complete else None
+        source_snapshot = {
+            "name": query.get("name", [None])[0],
+            "price": query.get("price", [None])[0],
+            "category": query.get("category", [None])[0],
+        }
     competitor = Competitor(
         product_id=product_id,
         name=name,
         price=payload.price,
         attributes=payload.attributes,
         source_url=payload.source_url,
-        source_status="manual" if not payload.source_url else "manual_required",
-        source_snapshot={},
+        source_status=source_status,
+        source_fetched_at=source_fetched_at,
+        source_snapshot=source_snapshot,
     )
     db.add(competitor)
     _commit(db)
@@ -631,7 +656,11 @@ def trends(
     period_end: date | None = None,
 ) -> TrendsRead:
     """按当前工作区返回实际存在的经营周期；缺失周期不填充为零。"""
-    conditions = [Store.workspace_id == access.workspace.id, Store.status == "active"]
+    conditions = [
+        Store.workspace_id == access.workspace.id,
+        Store.status == "active",
+        Product.status == "active",
+    ]
     if store_id is not None:
         _store(db, access, store_id)
         conditions.append(Store.id == store_id)
@@ -644,7 +673,11 @@ def trends(
         conditions.append(BusinessMetric.period_start <= period_end)
     stores = list(
         db.scalars(
-            select(Store).where(*conditions[:2] + ([Store.id == store_id] if store_id else []))
+            select(Store).where(
+                Store.workspace_id == access.workspace.id,
+                Store.status == "active",
+                *([Store.id == store_id] if store_id else []),
+            )
         )
     )
     rows = db.execute(

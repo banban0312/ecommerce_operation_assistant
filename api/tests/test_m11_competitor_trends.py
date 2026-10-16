@@ -69,6 +69,17 @@ def test_competitor_link_parser_preserves_manual_fallback(m11_client) -> None:
     )
     assert parsed.status_code == 200
     assert parsed.json()["status"] == "parsed"
+    saved = client.post(
+        f"/api/v1/catalog/products/{product_id}/competitors",
+        json={
+            "name": "竞品",
+            "price": "89.50",
+            "source_url": "https://item.taobao.com/item.htm?name=竞品&price=89.5",
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 201
+    assert saved.json()["source_status"] == "parsed"
     unsupported = client.post(
         f"/api/v1/catalog/products/{product_id}/competitors/parse",
         json={"source_url": "https://example.com/item/1"},
