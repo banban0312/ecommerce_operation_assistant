@@ -10,6 +10,7 @@ from app.models import AdProposal, AdProposalDecision, Product, Store
 from app.schemas.campaign import (
     DecisionCreate,
     DecisionRead,
+    ProposalCreate,
     ProposalRead,
     ProposalUpdate,
     RiskUpdate,
@@ -55,7 +56,7 @@ def _read(db, proposal):
 
 
 @router.post("/products/{product_id}/proposals", response_model=ProposalRead, status_code=201)
-def generate_proposal(product_id: int, db: SessionDep, access: Access):
+def generate_proposal(product_id: int, payload: ProposalCreate, db: SessionDep, access: Access):
     product = _product(db, access, product_id)
     prompt = (
         "为商品生成投放实验建议，只输出 JSON，字段必须包括 audience、bidding_strategy、"
@@ -71,6 +72,7 @@ def generate_proposal(product_id: int, db: SessionDep, access: Access):
         workspace_id=access.workspace.id,
         product_id=product.id,
         content=content,
+        risk_level=payload.risk_level,
         submitted_by=access.user.id,
         status="pending",
     )

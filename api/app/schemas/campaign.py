@@ -11,6 +11,10 @@ class ProposalUpdate(BaseModel):
     content: dict = Field(min_length=1)
 
 
+class ProposalCreate(BaseModel):
+    risk_level: Literal["normal", "high"] = "normal"
+
+
 class RiskUpdate(BaseModel):
     risk_level: Literal["normal", "high"]
     revision: int = Field(ge=1)
