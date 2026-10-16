@@ -67,6 +67,10 @@ docker compose exec api python -m app.bootstrap
 
 主要接口位于 `/api/v1/media`：`products/{id}/jobs`、`jobs/{id}`、`jobs/{id}/cancel`、`jobs/{id}/retry`、`products/{id}/assets`、`assets/{id}`。Web 经同源 `/api/media/` 代理访问。
 
+### M8 批量导入中心
+
+“导入中心”支持商品、SKU/库存和经营数据三类 CSV/XLSX 模板。上传后先生成带行号、字段和错误原因的预览批次，预览不会写入业务表；用户确认后只提交有效行。批次带工作空间归属和版本号，重复提交或过期提交会被拒绝。接口位于 `/api/v1/imports`，Web 页面为 `/imports`。
+
 ### M6/M7 投放审批与经营复盘
 
 投放建议仅保存人群、出价思路、素材组合和 A/B 实验方案，不调用外部广告接口。普通建议可由运营人员确认或驳回，高风险建议必须由主管或管理员处理；风险调整、审批人、角色、备注和时间均写入审计记录。经营数据按商品、日期周期和来源保存目标与实际 GMV、曝光、点击率、转化率和 ROI；复盘报告汇总商品全景、已确认诊断、已审核素材、已处理投放建议及指标差异，并可将行动项关联到下一轮诊断。接口位于 `/api/v1/campaigns` 和 `/api/v1/review`。

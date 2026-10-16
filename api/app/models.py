@@ -249,6 +249,26 @@ class ReviewReport(Base):
     )
 
 
+class ImportBatch(Base):
+    """两阶段导入批次；预览阶段只保存解析结果，确认后才写业务表。"""
+
+    __tablename__ = "import_batches"
+    __table_args__ = (UniqueConstraint("workspace_id", "batch_key", name="uq_import_batch_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    batch_key: Mapped[str] = mapped_column(String(80))
+    data_type: Mapped[str] = mapped_column(String(20))
+    filename: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="preview")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    rows: Mapped[list] = mapped_column(JSON)
+    valid_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class PlatformAccountPlaceholder(Base):
     """仅记录平台账号标识和授权占位状态，不承载密码、Cookie 或令牌。"""
 
