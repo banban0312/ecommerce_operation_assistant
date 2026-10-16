@@ -13,6 +13,13 @@ x-api-environment: &api-environment
   CELERY_RESULT_BACKEND: redis://redis:6379/1
   UPLOADS_DIR: /app/uploads
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  # 密钥仅进入 API/Worker 运行环境，不保存到业务数据库或浏览器响应。
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-}
+  OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-}
+  VIDEO_PROVIDER: ${VIDEO_PROVIDER:-}
+  VIDEO_API_KEY: ${VIDEO_API_KEY:-}
+  VIDEO_MODEL: ${VIDEO_MODEL:-}
 
 # API 与 Worker 共用镜像，迁移容器也使用该镜像执行 Alembic。
 x-api-build: &api-build

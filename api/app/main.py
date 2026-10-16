@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from app.api.routes import auth, catalog, health
+from app.api.routes import auth, catalog, health, settings
 from app.core.config import get_settings
 from app.db.session import get_engine
 from app.observability import configure_logging
@@ -30,6 +30,7 @@ app = FastAPI(title="电商运营助手 API", version="0.1.0", lifespan=lifespan
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(catalog.router, prefix="/api/v1")
+app.include_router(settings.router, prefix="/api/v1")
 
 
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
