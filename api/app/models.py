@@ -534,3 +534,91 @@ class Competitor(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class AgentTask(Base):
+    """绑定单个商品的 Agent 任务；状态和 checkpoint 用于暂停后恢复。"""
+
+    __tablename__ = "agent_tasks"
+    __table_args__ = (
+        Index("ix_agent_tasks_workspace_product", "workspace_id", "product_id", "created_at"),
+        CheckConstraint(
+            "status IN ('queued','running','waiting_approval','paused','succeeded','failed',"
+            "'rejected','cancelled')",
+            name="ck_agent_task_status",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(160))
+    goal: Mapped[str] = mapped_column(Text, default="")
+    requested_tools: Mapped[list] = mapped_column(JSON, default=list)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    current_step: Mapped[int] = mapped_column(Integer, default=0)
+    checkpoint_version: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentStep(Base):
+    """Agent 每一步的输入、输出和 checkpoint，保证可追溯且可幂等重试。"""
+
+    __tablename__ = "agent_steps"
+    __table_args__ = (
+        UniqueConstraint("task_id", "step_no", name="uq_agent_step_no"),
+        Index("ix_agent_steps_task", "task_id", "step_no"),
+        CheckConstraint(
+            "status IN ('pending','running','waiting_approval','succeeded','failed','skipped')",
+            name="ck_agent_step_status",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_tasks.id", ondelete="CASCADE"), index=True
+    )
+    step_no: Mapped[int] = mapped_column(Integer)
+    tool_name: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    input_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    checkpoint: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentApproval(Base):
+    """高风险步骤的审批记录；只有主管或管理员可作出决定。"""
+
+    __tablename__ = "agent_approvals"
+    __table_args__ = (
+        Index("ix_agent_approvals_task", "task_id", "created_at"),
+        CheckConstraint(
+            "status IN ('pending','approved','rejected')", name="ck_agent_approval_status"
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_tasks.id", ondelete="CASCADE"), index=True
+    )
+    step_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_steps.id", ondelete="CASCADE"), index=True
+    )
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    risk_level: Mapped[str] = mapped_column(String(20), default="high")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    decision_note: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

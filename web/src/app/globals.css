@@ -242,3 +242,6 @@ h2 { font-size:16px; font-weight:600; margin:0; }
 @media(max-width:720px) { .settings-services,.rules-form { grid-template-columns:1fr; } .platform-row { grid-template-columns:1fr; } .audit-list>div { grid-template-columns:1fr; } }
 @media(max-width:1100px) { .metric-grid{grid-template-columns:repeat(2,1fr);} .profile-grid{grid-template-columns:repeat(2,1fr);} }
 @media(max-width:720px) { .metric-grid,.profile-grid,.future-grid{grid-template-columns:1fr;} .pager{align-items:flex-start;flex-direction:column;} .context-bar{align-items:flex-start;flex-direction:column;} }
+
+/* M10 Agent 中心：沿用工作台卡片层级，突出状态与审批动作。 */
+.agent-tools{display:flex;flex-wrap:wrap;gap:10px}.agent-create .form-grid{margin-top:18px}.agent-task-list{display:grid;gap:14px}.agent-task-card{display:grid;gap:12px;padding:18px;border:1px solid var(--line,#e4e8ef);border-radius:14px;background:var(--surface,#fff)}.agent-task-card>div:first-child{display:grid;gap:6px}.agent-task-card details{border-top:1px solid var(--line,#e4e8ef);padding-top:12px}.agent-task-card details p{font-size:13px;color:var(--muted,#667085);margin:8px 0}.status-badge.warning{color:#9a6700;background:#fff6d8}
