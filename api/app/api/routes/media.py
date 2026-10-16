@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 
@@ -17,7 +17,14 @@ from app.models import (
     Store,
     TaskRule,
 )
-from app.schemas.media import AssetRead, AssetUpdate, EventRead, JobCreate, JobRead
+from app.schemas.media import (
+    AssetCompareRead,
+    AssetRead,
+    AssetUpdate,
+    EventRead,
+    JobCreate,
+    JobRead,
+)
 from app.services.audit import record_audit_event
 from app.services.workspaces import WorkspaceAccess
 from app.worker.tasks import run_generation_job
@@ -185,14 +192,66 @@ def retry_job(job_id: int, db: SessionDep, access: Access):
 
 
 @router.get("/products/{product_id}/assets", response_model=list[AssetRead])
-def list_assets(product_id: int, db: SessionDep, access: Access):
+def list_assets(
+    product_id: int,
+    db: SessionDep,
+    access: Access,
+    media_type: str | None = None,
+    review_status: str | None = None,
+    tag: str | None = None,
+    job_id: int | None = None,
+):
     _product(db, access, product_id)
-    return list(
+    if media_type not in {None, "image", "video"}:
+        raise HTTPException(422, "素材类型不正确")
+    if review_status not in {None, "pending", "approved", "rejected"}:
+        raise HTTPException(422, "审核状态不正确")
+    conditions = [MediaAsset.product_id == product_id, MediaAsset.status == "available"]
+    if media_type:
+        conditions.append(MediaAsset.media_type == media_type)
+    if review_status:
+        conditions.append(MediaAsset.review_status == review_status)
+    if job_id:
+        conditions.append(MediaAsset.job_id == job_id)
+    assets = list(
+        db.scalars(select(MediaAsset).where(*conditions).order_by(desc(MediaAsset.created_at)))
+    )
+    # 标签字段为 JSON；应用层精确匹配避免不同数据库 JSON 序列化差异。
+    return [asset for asset in assets if not tag or tag in (asset.tags or [])]
+
+
+@router.get("/products/{product_id}/assets/compare", response_model=AssetCompareRead)
+def compare_assets(
+    product_id: int,
+    db: SessionDep,
+    access: Access,
+    asset_ids: str = Query(min_length=1),
+):
+    _product(db, access, product_id)
+    try:
+        ids = {int(value) for value in asset_ids.split(",") if value.strip()}
+    except ValueError as exc:
+        raise HTTPException(422, "素材 ID 不正确") from exc
+    if len(ids) < 2 or len(ids) > 4:
+        raise HTTPException(422, "请传入 2 到 4 个素材进行比较")
+    assets = list(
         db.scalars(
             select(MediaAsset)
-            .where(MediaAsset.product_id == product_id, MediaAsset.status == "available")
-            .order_by(desc(MediaAsset.created_at))
+            .where(MediaAsset.product_id == product_id, MediaAsset.id.in_(ids))
+            .order_by(MediaAsset.id)
         )
+    )
+    if len(assets) != len(ids):
+        raise HTTPException(404, "存在不属于当前商品的素材")
+    return AssetCompareRead(
+        product_id=product_id,
+        assets=[AssetRead.model_validate(asset) for asset in assets],
+        differences={
+            "media_type": sorted({asset.media_type for asset in assets}),
+            "review_status": sorted({asset.review_status for asset in assets}),
+            "tags": sorted({tag for asset in assets for tag in asset.tags}),
+            "content_versions": sorted({str(asset.content_version_id) for asset in assets}),
+        },
     )
 
 
