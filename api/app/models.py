@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -6,6 +6,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -188,6 +189,66 @@ class TaskRule(Base):
     )
 
 
+class BusinessMetric(Base):
+    """按商品和周期保存目标、实际经营指标。"""
+
+    __tablename__ = "business_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id", "period_start", "period_end", "source", name="uq_business_metric_period"
+        ),
+        Index("ix_business_metrics_product_period", "product_id", "period_start", "period_end"),
+        CheckConstraint("period_end >= period_start", name="ck_business_metric_period"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(40), default="manual")
+    target_gmv: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    actual_gmv: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    target_impressions: Mapped[int] = mapped_column(Integer)
+    actual_impressions: Mapped[int] = mapped_column(Integer)
+    target_ctr: Mapped[Decimal] = mapped_column(Numeric(8, 5))
+    actual_ctr: Mapped[Decimal] = mapped_column(Numeric(8, 5))
+    target_conversion_rate: Mapped[Decimal] = mapped_column(Numeric(8, 5))
+    actual_conversion_rate: Mapped[Decimal] = mapped_column(Numeric(8, 5))
+    target_roi: Mapped[Decimal] = mapped_column(Numeric(8, 3))
+    actual_roi: Mapped[Decimal] = mapped_column(Numeric(8, 3))
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ReviewReport(Base):
+    """复盘报告快照；content 区分事实、目标差异和行动建议。"""
+
+    __tablename__ = "review_reports"
+    __table_args__ = (
+        Index("ix_review_reports_product_created", "product_id", "created_at"),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_review_report_status"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    metric_id: Mapped[int] = mapped_column(ForeignKey("business_metrics.id"))
+    content: Mapped[dict] = mapped_column(JSON)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class PlatformAccountPlaceholder(Base):
     """仅记录平台账号标识和授权占位状态，不承载密码、Cookie 或令牌。"""
 
@@ -237,6 +298,9 @@ class ContentVersion(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     source: Mapped[str] = mapped_column(String(20), default="model")
     content: Mapped[dict] = mapped_column(JSON)
+    source_report_id: Mapped[int | None] = mapped_column(
+        ForeignKey("review_reports.id"), nullable=True
+    )
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

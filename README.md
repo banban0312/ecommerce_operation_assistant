@@ -67,6 +67,10 @@ docker compose exec api python -m app.bootstrap
 
 主要接口位于 `/api/v1/media`：`products/{id}/jobs`、`jobs/{id}`、`jobs/{id}/cancel`、`jobs/{id}/retry`、`products/{id}/assets`、`assets/{id}`。Web 经同源 `/api/media/` 代理访问。
 
+### M6/M7 投放审批与经营复盘
+
+投放建议仅保存人群、出价思路、素材组合和 A/B 实验方案，不调用外部广告接口。普通建议可由运营人员确认或驳回，高风险建议必须由主管或管理员处理；风险调整、审批人、角色、备注和时间均写入审计记录。经营数据按商品、日期周期和来源保存目标与实际 GMV、曝光、点击率、转化率和 ROI；复盘报告汇总商品全景、已确认诊断、已审核素材、已处理投放建议及指标差异，并可将行动项关联到下一轮诊断。接口位于 `/api/v1/campaigns` 和 `/api/v1/review`。
+
 `migrate` 容器完成迁移后以状态码 0 退出，属于正常状态；其他五个服务应为运行且健康。`smoke.ps1` 验证匿名访问保护、数据库迁移版本及 API → Redis → Worker → 结果队列的真实执行链路。若要同时验收登录、大盘与退出，在管理员初始化后执行以下命令，并在系统提示时输入账号密码；凭据不会写入仓库：
 
 ```powershell
