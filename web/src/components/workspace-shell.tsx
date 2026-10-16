@@ -20,7 +20,7 @@ export function WorkspaceShell({ identity, title, children }: { identity: Identi
           <nav className="primary-nav" aria-label="主导航">
             <Link className={`nav-item ${title === "运营大盘" ? "active" : ""}`} href="/">运营大盘</Link>
             <Link className={`nav-item ${title === "商品工作台" ? "active" : ""}`} href="/products">商品工作台</Link>
-            <button className="nav-item" disabled title="后续迭代开放">Agent 中心</button>
+            <Link className={`nav-item ${title === "Agent 中心" ? "active" : ""}`} href="/agent">Agent 中心</Link>
             <Link className={`nav-item ${title === "导入中心" ? "active" : ""}`} href="/imports">导入中心</Link>
             {membership?.role === "admin" ? <Link className={`nav-item ${title === "模型配置" ? "active" : ""}`} href="/settings">模型配置</Link> : <button className="nav-item" disabled title="仅管理员可用">模型配置</button>}
           </nav>

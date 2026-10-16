@@ -4,7 +4,19 @@ from time import monotonic
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models import ContentVersion, GenerationEvent, GenerationJob, MediaAsset, TaskRule
+from app.models import (
+    AgentApproval,
+    AgentStep,
+    AgentTask,
+    BusinessMetric,
+    ContentVersion,
+    GenerationEvent,
+    GenerationJob,
+    MediaAsset,
+    Product,
+    ProductSku,
+    TaskRule,
+)
 from app.services.media_provider import generate_media
 from app.worker.celery_app import celery_app
 
@@ -79,3 +91,120 @@ def run_generation_job(job_id: int) -> dict:
             )
         db.commit()
         return {"status": job.status, "job_id": job.id}
+
+
+@celery_app.task(name="agent.run_task")
+def run_agent_task(task_id: int) -> dict:
+    """逐步执行 Agent；每一步提交 checkpoint，审批节点只暂停不执行外部副作用。"""
+    with get_session_factory()() as db:
+        task = db.get(AgentTask, task_id)
+        if task is None:
+            return {"status": "missing"}
+        if task.status in {"succeeded", "failed", "rejected", "cancelled"}:
+            return {"status": task.status}
+        steps = list(
+            db.scalars(
+                select(AgentStep).where(AgentStep.task_id == task.id).order_by(AgentStep.step_no)
+            )
+        )
+        for step in steps:
+            if step.status == "succeeded":
+                continue
+            if step.tool_name == "approval_gate":
+                approval = db.scalar(
+                    select(AgentApproval)
+                    .where(AgentApproval.step_id == step.id)
+                    .order_by(AgentApproval.id.desc())
+                )
+                if approval is None:
+                    approval = AgentApproval(
+                        task_id=task.id,
+                        step_id=step.id,
+                        workspace_id=task.workspace_id,
+                        requested_by=task.created_by,
+                    )
+                    db.add(approval)
+                    step.status = "waiting_approval"
+                    task.status = "waiting_approval"
+                    task.current_step = step.step_no
+                    task.paused_at = datetime.now(UTC)
+                    db.commit()
+                    return {"status": "waiting_approval", "task_id": task.id}
+                if approval.status == "pending":
+                    task.status = "waiting_approval"
+                    step.status = "waiting_approval"
+                    db.commit()
+                    return {"status": "waiting_approval", "task_id": task.id}
+                if approval.status == "rejected":
+                    task.status = "rejected"
+                    step.status = "skipped"
+                    task.finished_at = datetime.now(UTC)
+                    db.commit()
+                    return {"status": "rejected", "task_id": task.id}
+                step.status = "succeeded"
+                step.output_summary = {"message": "主管已审批，可继续执行人工动作"}
+                step.finished_at = datetime.now(UTC)
+                task.checkpoint_version += 1
+                task.current_step = step.step_no
+                task.status = "running"
+                db.commit()
+                continue
+            task.status = "running"
+            task.current_step = step.step_no
+            step.status = "running"
+            step.started_at = datetime.now(UTC)
+            db.commit()
+            product = db.get(Product, task.product_id)
+            if step.tool_name == "catalog_snapshot":
+                skus = list(
+                    db.scalars(select(ProductSku).where(ProductSku.product_id == task.product_id))
+                )
+                output = {
+                    "product_name": product.name if product else "",
+                    "category": product.category if product else "",
+                    "sku_count": len(skus),
+                    "stock_total": sum(s.stock for s in skus),
+                }
+            elif step.tool_name == "content_summary":
+                versions = list(
+                    db.scalars(
+                        select(ContentVersion).where(
+                            ContentVersion.product_id == task.product_id,
+                            ContentVersion.status == "confirmed",
+                        )
+                    )
+                )
+                output = {
+                    "confirmed_count": len(versions),
+                    "types": sorted({v.content_type for v in versions}),
+                }
+            elif step.tool_name == "performance_summary":
+                metrics = list(
+                    db.scalars(
+                        select(BusinessMetric).where(BusinessMetric.product_id == task.product_id)
+                    )
+                )
+                output = {
+                    "metric_count": len(metrics),
+                    "latest_actual_gmv": str(metrics[-1].actual_gmv) if metrics else "0",
+                }
+            else:
+                output = {
+                    "recommendation": "基于商品上下文生成运营建议草稿，等待人工审核",
+                    "protected_action": step.tool_name == "recommendation_publish",
+                }
+            step.output_summary = output
+            step.checkpoint = {"version": task.checkpoint_version + 1, "step_no": step.step_no}
+            step.status = "succeeded"
+            step.finished_at = datetime.now(UTC)
+            task.context = {**(task.context or {}), step.tool_name: output}
+            task.checkpoint_version += 1
+            db.commit()
+        task.status = "succeeded"
+        task.finished_at = datetime.now(UTC)
+        db.commit()
+        return {
+            "status": task.status,
+            "task_id": task.id,
+            "checkpoint_version": task.checkpoint_version,
+        }

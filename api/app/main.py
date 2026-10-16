@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException
 
 from app.api.routes import (
     auth,
+    agent,
     campaign,
     catalog,
     content,
@@ -46,6 +47,7 @@ app.include_router(media.router, prefix="/api/v1")
 app.include_router(campaign.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")
 app.include_router(imports.router, prefix="/api/v1")
+app.include_router(agent.router, prefix="/api/v1")
 
 
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:

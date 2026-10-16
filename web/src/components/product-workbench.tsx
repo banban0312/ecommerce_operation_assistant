@@ -86,7 +86,7 @@ export function ProductWorkbench({ productId, workspaceId }: { productId: number
       <div className="page-heading"><div><p className="eyebrow">PRODUCT WORKSPACE</p><h1>{product.name}</h1><p>{store?.name ?? "店铺"} · {store?.platform ?? "平台"} · {product.category || "未分类"}</p></div><Link className="button secondary" href="/products">返回商品工作台</Link></div>
       {error && <p className="notice error" role="alert">{error}</p>}
       <div className="context-bar"><label>当前商品 <select value={productId} onChange={(event) => router.push(`/products/${event.target.value}`)}>{allProducts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>商品 ID：{product.id}</span><span>SKU：{skus.length}</span><span>竞品：{competitors.length}</span></div>
-      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><a href="#ai-content">智能诊断与创意</a><span>投放复盘 · 待开放</span></nav>
+      <nav className="section-nav" aria-label="商品工作台分区"><a href="#profile">商品档案</a><a href="#inventory">SKU 与库存</a><a href="#competitors">竞品对标</a><a href="#ai-content">智能诊断与创意</a><Link href={`/agent?product_id=${productId}`}>Agent 任务</Link><span>投放复盘 · 待开放</span></nav>
 
       <section className="panel" id="profile">
         <div className="section-heading"><div><p className="eyebrow">PRODUCT PROFILE</p><h2>商品档案</h2></div><button className="button secondary" onClick={() => setEditProduct(!editProduct)}>编辑档案</button></div>
