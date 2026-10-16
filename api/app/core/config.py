@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://redis:6379/1"
     uploads_dir: Path = Path("uploads")
     log_level: str = "INFO"
+    # 模型密钥只在进程环境中读取；数据库与响应仅保存非敏感参数和状态。
+    openai_api_key: SecretStr = SecretStr("")
+    openai_text_model: str = ""
+    openai_image_model: str = ""
+    video_provider: str = ""
+    video_api_key: SecretStr = SecretStr("")
+    video_model: str = ""
 
     @property
     def database_url(self) -> URL:

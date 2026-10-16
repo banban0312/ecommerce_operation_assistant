@@ -147,6 +147,61 @@ class Store(Base):
     )
 
 
+class ServiceConfig(Base):
+    """按工作空间保存非敏感模型参数；密钥只从运行环境读取。"""
+
+    __tablename__ = "service_configs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "target", name="uq_service_config_workspace_target"),
+        CheckConstraint("target IN ('text', 'image', 'video')", name="ck_service_config_target"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    target: Mapped[str] = mapped_column(String(20))
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(120), default="")
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TaskRule(Base):
+    """任务调度参数的持久化入口，供后续生成任务读取。"""
+
+    __tablename__ = "task_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), unique=True, index=True)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=300)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=2)
+    image_poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=5)
+    image_poll_max_attempts: Mapped[int] = mapped_column(Integer, default=24)
+    video_poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    video_poll_max_attempts: Mapped[int] = mapped_column(Integer, default=36)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PlatformAccountPlaceholder(Base):
+    """仅记录平台账号标识和授权占位状态，不承载密码、Cookie 或令牌。"""
+
+    __tablename__ = "platform_account_placeholders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), unique=True, index=True)
+    account_identifier: Mapped[str] = mapped_column(String(120), default="")
+    authorization_status: Mapped[str] = mapped_column(String(30), default="not_connected")
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Product(Base):
     """商品档案始终经所属店铺确定工作空间。"""
 
